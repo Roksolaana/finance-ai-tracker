@@ -1,0 +1,316 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Golos Text", sans-serif;
+  --font-display: "Unbounded", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+:root {
+  --bg: #f8f6ed;
+  --surface: #ffffff;
+  --surface-soft: #f2efe1;
+  --sidebar: #f2efe0;
+  --sidebar-hover: #e7e1cc;
+  --sidebar-border: #e3e0cc;
+  --ink: #1e2318;
+  --ink-soft: #3b4030;
+  --ink-muted: #767a65;
+  --border: #e3e0cc;
+  --border-soft: #edead9;
+  --accent: #55643b;
+  --accent-strong: #333d21;
+  --accent-soft: #9fb07c;
+  --accent-tint: #e4e8d4;
+  --accent-on: #ffffff;
+  --positive: #2f6b3c;
+  --positive-bg: #e3eedf;
+  --negative: #a23b2e;
+  --negative-bg: #f6e3de;
+  --gold: #8a6d22;
+  --gold-bg: #f3ecd8;
+  --cat-food: #6b7f2e;
+  --cat-transport: #0088a3;
+  --cat-fun: #d1592a;
+  --cat-utility: #9c3d73;
+  --cat-other: #c79400;
+  --shadow-card: 0 1px 2px rgba(30, 35, 24, 0.05), 0 1px 1px rgba(30, 35, 24, 0.04);
+  color-scheme: light;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+body {
+  font-family: "Golos Text", sans-serif;
+}
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-soft);
+}
+svg.icon {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+::selection {
+  background: var(--accent-soft);
+  color: var(--accent-on);
+}
+
+.shell {
+  background: var(--bg);
+}
+.panel-sidebar {
+  background: var(--sidebar);
+  color: var(--ink-muted);
+  border-right: 1px solid var(--sidebar-border);
+}
+.panel-sidebar .divider {
+  border-color: var(--sidebar-border);
+}
+.nav-link {
+  color: var(--ink-muted);
+  transition: background-color 0.15s, color 0.15s;
+}
+.nav-link:hover {
+  background: var(--sidebar-hover);
+  color: var(--ink);
+}
+.nav-link.active {
+  background: var(--accent-tint);
+  color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.brand-mark {
+  color: var(--accent);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+}
+.card-soft {
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+}
+.divider-x {
+  border-color: var(--border);
+}
+.divider-soft {
+  border-color: var(--border-soft);
+}
+
+.text-ink {
+  color: var(--ink);
+}
+.text-ink-soft {
+  color: var(--ink-soft);
+}
+.text-muted {
+  color: var(--ink-muted);
+}
+.bg-surface {
+  background: var(--surface);
+}
+.bg-surface-soft {
+  background: var(--surface-soft);
+}
+.bg-page {
+  background: var(--bg);
+}
+.border-c {
+  border-color: var(--border);
+}
+.border-c-soft {
+  border-color: var(--border-soft);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-on);
+  transition: background-color 0.15s;
+}
+.btn-primary:hover {
+  background: var(--accent-strong);
+}
+.btn-ghost {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  transition: background-color 0.15s;
+}
+.btn-ghost:hover {
+  background: var(--surface-soft);
+}
+.link-accent {
+  color: var(--ink-muted);
+  transition: color 0.15s;
+}
+.link-accent:hover {
+  color: var(--accent);
+}
+
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  border-bottom: 3px solid var(--accent);
+  box-shadow: var(--shadow-card);
+}
+.tile-icon {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.chip-pos {
+  background: var(--positive-bg);
+  color: var(--positive);
+}
+.chip-neg {
+  background: var(--negative-bg);
+  color: var(--negative);
+}
+.amount-pos {
+  color: var(--positive);
+}
+.amount-neg {
+  color: var(--ink);
+}
+
+.input-field {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink);
+}
+.input-field::placeholder {
+  color: var(--ink-muted);
+}
+.input-field:focus {
+  outline: none;
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.table-head {
+  color: var(--ink-muted);
+  background: var(--surface);
+  border-color: var(--border-soft);
+}
+.table-row {
+  border-color: var(--border-soft);
+  transition: background-color 0.15s;
+}
+.table-row:hover {
+  background: var(--surface-soft);
+}
+.table-foot {
+  background: var(--surface-soft);
+  border-color: var(--border);
+}
+
+.cat-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.badge-cat {
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+}
+
+.bar-income {
+  background: var(--accent-soft);
+}
+.bar-expense {
+  background: var(--accent-strong);
+}
+.bar-wrap {
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+.bar-wrap:hover {
+  transform: scaleY(1.02);
+  filter: brightness(1.08);
+}
+
+.progress-track {
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.progress-fill {
+  transition: width 0.3s ease;
+}
+.fill-ok {
+  background: var(--accent);
+}
+.fill-warn {
+  background: var(--gold);
+}
+.fill-over {
+  background: var(--negative);
+}
+
+.ai-panel {
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+}
+.bubble-user {
+  background: var(--accent-tint);
+  color: var(--ink);
+}
+.bubble-assist {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.quick-prompt {
+  background: var(--surface-soft);
+  border: 1px dashed var(--border);
+  color: var(--ink-soft);
+  transition: border-color 0.15s, color 0.15s;
+}
+.quick-prompt:hover {
+  border-color: var(--accent-soft);
+  color: var(--ink);
+}
+.tool-badge {
+  color: var(--accent);
+}
+.composer {
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.composer:focus-within {
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+.ring-motif circle {
+  stroke: var(--accent);
+}
+
+@media (max-width: 1023px) {
+  .app-shell {
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .pane-scroll {
+    overflow: visible !important;
+    height: auto !important;
+  }
+}

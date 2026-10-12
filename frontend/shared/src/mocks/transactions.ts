@@ -1,0 +1,60 @@
+import type { Transaction } from "../types";
+
+export const mockTransactions: Transaction[] = [
+  {
+    id: "t1",
+    amount: -320,
+    category: "їжа",
+    spent_at: "2025-10-28T12:30:00Z",
+    note: "Кав'ярня «Львівка»",
+    created_at: "2025-10-28T12:30:00Z",
+  },
+  {
+    id: "t2",
+    amount: 4500,
+    category: "дохід",
+    spent_at: "2025-10-27T09:00:00Z",
+    note: "Стипендія",
+    created_at: "2025-10-27T09:00:00Z",
+  },
+  {
+    id: "t3",
+    amount: -185.5,
+    category: "транспорт",
+    spent_at: "2025-10-26T18:10:00Z",
+    note: "Bolt Taxi",
+    created_at: "2025-10-26T18:10:00Z",
+  },
+  {
+    id: "t4",
+    amount: -250,
+    category: "підписки",
+    spent_at: "2025-10-25T08:00:00Z",
+    note: "Netflix",
+    created_at: "2025-10-25T08:00:00Z",
+  },
+  {
+    id: "t5",
+    amount: -420,
+    category: "розваги",
+    spent_at: "2025-10-24T20:45:00Z",
+    note: "Кінотеатр «Планета»",
+    created_at: "2025-10-24T20:45:00Z",
+  },
+  {
+    id: "t6",
+    amount: -210,
+    category: "їжа",
+    spent_at: "2025-10-22T19:00:00Z",
+    note: "Купила солодке, важкий день",
+    created_at: "2025-10-22T19:00:00Z",
+  },
+  {
+    id: "t7",
+    amount: -185,
+    category: "транспорт",
+    spent_at: "2025-10-20T22:30:00Z",
+    note: "Таксі, бо не було сил на метро",
+    created_at: "2025-10-20T22:30:00Z",
+  },
+];
