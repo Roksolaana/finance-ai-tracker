@@ -2,6 +2,10 @@ import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { CATEGORIES, type TransactionCategory } from "@finance/shared";
 
+type TransactionKind = "expense" | "income";
+
+const EXPENSE_CATEGORIES = CATEGORIES.filter((c) => c !== "дохід");
+
 interface AddTransactionDialogProps {
   onAdd: (input: {
     amount: number;
@@ -13,18 +17,19 @@ interface AddTransactionDialogProps {
 
 export function AddTransactionDialog({ onAdd }: AddTransactionDialogProps) {
   const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<TransactionKind>("expense");
   const [amount, setAmount] = useState("");
-  const [category, setCategory] = useState<TransactionCategory>(CATEGORIES[0]);
+  const [category, setCategory] = useState<TransactionCategory>(EXPENSE_CATEGORIES[0]);
   const [note, setNote] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const parsed = Number(amount);
-    if (!amount || Number.isNaN(parsed)) return;
+    if (!amount || Number.isNaN(parsed) || parsed <= 0) return;
 
     onAdd({
-      amount: parsed,
-      category,
+      amount: kind === "income" ? parsed : -parsed,
+      category: kind === "income" ? "дохід" : category,
       note: note.trim() || null,
       spent_at: new Date().toISOString(),
     });
@@ -51,32 +56,58 @@ export function AddTransactionDialog({ onAdd }: AddTransactionDialogProps) {
             Нова транзакція
           </Dialog.Title>
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="flex rounded-lg overflow-hidden border border-c">
+              <button
+                type="button"
+                onClick={() => setKind("expense")}
+                className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                  kind === "expense" ? "btn-primary" : "bg-surface text-ink-soft"
+                }`}
+              >
+                Витрата
+              </button>
+              <button
+                type="button"
+                onClick={() => setKind("income")}
+                className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                  kind === "income" ? "btn-primary" : "bg-surface text-ink-soft"
+                }`}
+              >
+                Дохід
+              </button>
+            </div>
+
             <div>
-              <label className="text-xs font-medium text-muted block mb-1.5">Сума (від'ємна — витрата)</label>
+              <label className="text-xs font-medium text-muted block mb-1.5">Сума</label>
               <input
                 type="number"
                 step="0.01"
+                min="0"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="-250.00"
+                placeholder="250.00"
                 className="input-field w-full rounded-md px-3 py-2 text-sm"
                 autoFocus
               />
             </div>
-            <div>
-              <label className="text-xs font-medium text-muted block mb-1.5">Категорія</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as TransactionCategory)}
-                className="input-field w-full rounded-md px-3 py-2 text-sm capitalize"
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="capitalize">
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
+
+            {kind === "expense" && (
+              <div>
+                <label className="text-xs font-medium text-muted block mb-1.5">Категорія</label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as TransactionCategory)}
+                  className="input-field w-full rounded-md px-3 py-2 text-sm capitalize"
+                >
+                  {EXPENSE_CATEGORIES.map((c) => (
+                    <option key={c} value={c} className="capitalize">
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div>
               <label className="text-xs font-medium text-muted block mb-1.5">Нотатка</label>
               <input

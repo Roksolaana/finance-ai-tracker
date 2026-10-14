@@ -8,7 +8,7 @@ const PER_PAGE = 5;
 type SortKey = "spent_at" | "amount";
 
 export function TransactionsPage() {
-  const { transactions, addTransaction } = useTransactions();
+  const { transactions, addTransaction, loadDemoData } = useTransactions();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<TransactionCategory | "all">("all");
   const [sortKey, setSortKey] = useState<SortKey>("spent_at");
@@ -55,6 +55,12 @@ export function TransactionsPage() {
           <p className="text-sm text-muted mt-1">Усі витрати й доходи в одному місці</p>
         </div>
         <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={loadDemoData}
+            className="btn-ghost inline-flex items-center gap-2 text-sm font-medium px-3.5 py-2 rounded-lg"
+          >
+            Завантажити демо-дані
+          </button>
           <button
             onClick={() => exportTransactionsToCsv(filtered)}
             className="btn-ghost inline-flex items-center gap-2 text-sm font-medium px-3.5 py-2 rounded-lg"

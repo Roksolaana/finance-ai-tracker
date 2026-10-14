@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { mockChatHistory, type ChatMessage } from "@finance/shared";
+import { initialChatMessages, type ChatMessage } from "@finance/shared";
 
 // Тимчасова заміна useChat() зі Етапу 3 — композитор уже працює, але відповідь
 // поки статична-заглушка, бо реального бекенду/LLM ще нема.
 export function useChatMock() {
-  const [messages, setMessages] = useState<ChatMessage[]>(mockChatHistory);
+  const [messages, setMessages] = useState<ChatMessage[]>(initialChatMessages);
 
   const sendMessage = (content: string) => {
     const trimmed = content.trim();
