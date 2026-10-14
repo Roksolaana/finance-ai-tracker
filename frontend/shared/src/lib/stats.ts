@@ -31,6 +31,10 @@ export function filterByMonth(transactions: Transaction[], key: string): Transac
   return transactions.filter((t) => monthKey(t.spent_at) === key);
 }
 
+export function upToDayOfMonth(transactions: Transaction[], day: number): Transaction[] {
+  return transactions.filter((t) => new Date(t.spent_at).getDate() <= day);
+}
+
 export function availableMonths(transactions: Transaction[]): string[] {
   return [...new Set(transactions.map((t) => monthKey(t.spent_at)))].sort().reverse();
 }
@@ -50,7 +54,13 @@ function sumExpensesByCategory(transactions: Transaction[]) {
   return byCategory;
 }
 
-export function computeMonthStats(allTransactions: Transaction[], key: string): DashboardStats {
+export type BudgetLimits = Partial<Record<TransactionCategory, number>>;
+
+export function computeMonthStats(
+  allTransactions: Transaction[],
+  key: string,
+  limits: BudgetLimits = BUDGET_LIMITS,
+): DashboardStats {
   const transactions = filterByMonth(allTransactions, key);
   const total_income = transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const total_expenses = transactions.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
@@ -77,7 +87,7 @@ export function computeMonthStats(allTransactions: Transaction[], key: string): 
     else point.expense += Math.abs(t.amount);
   }
 
-  const budgets: BudgetLimit[] = Object.entries(BUDGET_LIMITS).map(([category, limit]) => ({
+  const budgets: BudgetLimit[] = Object.entries(limits).map(([category, limit]) => ({
     category: category as TransactionCategory,
     limit: limit as number,
     spent: byCategory.get(category as TransactionCategory) ?? 0,

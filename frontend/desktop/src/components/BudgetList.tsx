@@ -1,42 +1,52 @@
+import { Settings2 } from "lucide-react";
 import type { BudgetLimit } from "@finance/shared";
+import { CategoryIcon } from "./CategoryIcon";
+import { formatMoney } from "../lib/format";
 
-function fillClass(spent: number, limit: number) {
-  const ratio = spent / limit;
-  if (ratio > 1) return "fill-over";
-  if (ratio > 0.8) return "fill-warn";
-  return "fill-ok";
+function barColor(ratio: number) {
+  if (ratio > 1) return "bg-negative";
+  if (ratio > 0.8) return "bg-gold";
+  return "bg-olive";
 }
 
-export function BudgetList({ budgets }: { budgets: BudgetLimit[] }) {
+export function BudgetList({ budgets, onConfigure }: { budgets: BudgetLimit[]; onConfigure: () => void }) {
   return (
-    <div className="card lg:col-span-3 p-6">
-      <div className="flex items-center justify-between mb-5">
-        <h3 className="text-sm font-semibold tracking-tight text-ink">Ліміти бюджету</h3>
-        <button className="text-xs font-medium link-accent">Керувати</button>
+    <div className="card h-full p-6">
+      <div className="mb-5 flex items-center justify-between">
+        <h3 className="card-title">Ліміти бюджету</h3>
+        <button onClick={onConfigure} className="btn-icon -my-2 -mr-2" title="Налаштувати ліміти" aria-label="Налаштувати ліміти">
+          <Settings2 size={17} />
+        </button>
       </div>
+      {budgets.length === 0 && (
+        <button onClick={onConfigure} className="w-full rounded-xl border border-dashed border-line py-6 text-sm text-muted hover:border-olive-soft hover:text-ink">
+          Встановіть ліміти, щоб контролювати витрати
+        </button>
+      )}
       <div className="space-y-4">
         {budgets.map((budget) => {
-          const overBy = budget.spent - budget.limit;
-          const widthPercent = Math.min(100, (budget.spent / budget.limit) * 100);
+          const ratio = budget.spent / budget.limit;
+          const left = budget.limit - budget.spent;
           return (
-            <div key={budget.category}>
-              <div className="flex justify-between text-sm mb-1.5">
-                <span className="font-medium text-ink-soft capitalize">{budget.category}</span>
-                <span className="font-mono tabular-nums text-muted text-xs">
-                  {budget.spent.toLocaleString("uk-UA")} / {budget.limit.toLocaleString("uk-UA")} ₴
-                </span>
-              </div>
-              <div className="w-full progress-track rounded-full h-1.5 overflow-hidden">
-                <div
-                  className={`${fillClass(budget.spent, budget.limit)} progress-fill h-1.5 rounded-full`}
-                  style={{ width: `${widthPercent}%` }}
-                />
-              </div>
-              {overBy > 0 && (
-                <p className="text-[11px] mt-1" style={{ color: "var(--negative)" }}>
-                  Перевищено на {overBy.toLocaleString("uk-UA")} ₴
+            <div key={budget.category} className="flex items-center gap-3">
+              <CategoryIcon category={budget.category} size={32} />
+              <div className="min-w-0 flex-1">
+                <div className="mb-1.5 flex items-baseline justify-between gap-2 text-sm">
+                  <span className="font-medium capitalize">{budget.category}</span>
+                  <span className="text-xs text-muted">
+                    {formatMoney(budget.spent)} / {formatMoney(budget.limit)}
+                  </span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-milk-deep">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${barColor(ratio)}`}
+                    style={{ width: `${Math.min(100, ratio * 100)}%` }}
+                  />
+                </div>
+                <p className={`mt-1 text-[11px] ${left < 0 ? "text-negative" : "text-muted"}`}>
+                  {left < 0 ? `Перевищено на ${formatMoney(-left)}` : `Залишилось ${formatMoney(left)}`}
                 </p>
-              )}
+              </div>
             </div>
           );
         })}

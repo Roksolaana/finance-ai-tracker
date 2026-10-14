@@ -1,21 +1,45 @@
+import type { LucideIcon } from "lucide-react";
+import { formatPercent } from "../lib/format";
+
 interface KpiTileProps {
   label: string;
   value: string;
-  iconPath: string;
+  icon: LucideIcon;
+  change?: number | null;
+  changeHint?: string;
+  invertTrend?: boolean;
 }
 
-export function KpiTile({ label, value, iconPath }: KpiTileProps) {
+export function KpiTile({
+  label,
+  value,
+  icon: Icon,
+  change,
+  changeHint = "від попереднього місяця",
+  invertTrend = false,
+}: KpiTileProps) {
+  const hasChange = change !== undefined && change !== null && Number.isFinite(change);
+  const isGood = hasChange && (invertTrend ? change! <= 0 : change! >= 0);
+
   return (
-    <div className="tile p-5">
-      <div className="flex items-center justify-between mb-5">
+    <div className="card p-5">
+      <div className="mb-4 flex items-center justify-between">
         <span className="text-sm font-medium text-muted">{label}</span>
-        <div className="tile-icon w-8 h-8 rounded-lg flex items-center justify-center">
-          <svg className="icon w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
-            <path d={iconPath} />
-          </svg>
-        </div>
+        <span className="inline-flex size-9 items-center justify-center rounded-xl bg-olive-tint text-olive">
+          <Icon size={17} strokeWidth={1.9} />
+        </span>
       </div>
-      <div className="font-mono tabular-nums text-[28px] font-semibold tracking-tight text-ink">{value}</div>
+      <p className="text-[26px] font-semibold leading-none tracking-tight">{value}</p>
+      {hasChange && (
+        <p className="mt-3 flex items-center gap-2 text-xs text-muted">
+          <span
+            className={`chip ${isGood ? "bg-positive-tint text-positive" : "bg-negative-tint text-negative"}`}
+          >
+            {formatPercent(change!)}
+          </span>
+          {changeHint}
+        </p>
+      )}
     </div>
   );
 }

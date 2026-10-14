@@ -1,123 +1,129 @@
+import { useNavigate, Link } from "react-router-dom";
+import { ArrowDownRight, ArrowUpRight, ChevronRight, PiggyBank, Plus } from "lucide-react";
+import {
+  comparePeriods,
+  computeMonthStats,
+  filterByMonth,
+  monthKey,
+  shiftMonth,
+  totalBalance,
+  upToDayOfMonth,
+} from "@finance/shared";
+import { useTransactions } from "../context/TransactionsContext";
+import { useUi } from "../context/UiContext";
+import { TopBar } from "../components/TopBar";
 import { KpiTile } from "../components/KpiTile";
-import { CashflowChart } from "../components/CashflowChart";
+import { DailyExpensesChart } from "../components/DailyExpensesChart";
 import { CategoryDonut } from "../components/CategoryDonut";
 import { BudgetList } from "../components/BudgetList";
-import { computeMonthStats } from "@finance/shared";
-import { useTransactions } from "../context/TransactionsContext";
+import { TransactionList } from "../components/TransactionList";
+import { formatMoney, formatMonth } from "../lib/format";
 
 export function DashboardPage() {
-  const { transactions, resetDemoData: loadDemoData, selectedMonth } = useTransactions();
-  const stats = computeMonthStats(transactions, selectedMonth);
-  const recent = transactions.slice(0, 5);
+  const { transactions, selectedMonth, budgetLimits } = useTransactions();
+  const { openAddForm, setBudgetsOpen } = useUi();
+  const navigate = useNavigate();
+
+  // Поточний місяць ще не завершився — порівнюємо з тими ж днями минулого місяця, а не з усім місяцем.
+  const today = new Date();
+  const isCurrentMonth = selectedMonth === monthKey(today);
+  const stats = computeMonthStats(transactions, selectedMonth, budgetLimits);
+  const previous = computeMonthStats(
+    isCurrentMonth ? upToDayOfMonth(transactions, today.getDate()) : transactions,
+    shiftMonth(selectedMonth, -1),
+    budgetLimits,
+  );
+  const changeHint = isCurrentMonth ? `проти 1–${today.getDate()} числа мин. місяця` : "від попереднього місяця";
+  const change = comparePeriods(stats, previous);
+  const monthTransactions = filterByMonth(transactions, selectedMonth);
+  const balance = totalBalance(transactions);
 
   return (
-    <main className="pane-scroll flex-1 overflow-y-auto px-5 sm:px-8 lg:px-10 py-7">
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7">
-        <div>
-          <h1 className="font-display text-xl sm:text-2xl font-semibold tracking-tight text-ink">
-            Привіт, Роксолано
-          </h1>
-          <p className="text-sm text-muted mt-1">Огляд фінансів</p>
-        </div>
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <button
-            onClick={loadDemoData}
-            className="btn-ghost inline-flex items-center gap-2 text-sm font-medium px-3.5 py-2 rounded-lg"
-          >
-            Завантажити демо-дані
-          </button>
-        </div>
-      </header>
+    <>
+      <TopBar title="Огляд" subtitle={`Ваші фінанси за ${formatMonth(selectedMonth).toLowerCase()}`} />
 
-      {transactions.length === 0 ? (
-        <div className="card p-10 text-center mb-6">
-          <p className="font-display text-lg text-ink mb-2">Ще немає жодної транзакції</p>
-          <p className="text-sm text-muted mb-5">
-            Додайте транзакцію вручну на сторінці "Транзакції" або завантажте демо-дані, щоб побачити застосунок у дії.
+      {monthTransactions.length === 0 ? (
+        <div className="card flex flex-col items-center px-6 py-16 text-center">
+          <span className="mb-4 inline-flex size-14 items-center justify-center rounded-2xl bg-olive-tint text-olive">
+            <PiggyBank size={26} />
+          </span>
+          <p className="font-display text-lg font-semibold">У цьому місяці ще немає записів</p>
+          <p className="mt-1 max-w-sm text-sm text-muted">
+            Додайте першу витрату чи дохід — статистика й графіки з'являться автоматично.
           </p>
-          <button
-            onClick={loadDemoData}
-            className="btn-primary inline-flex items-center gap-2 text-sm font-medium px-3.5 py-2 rounded-lg"
-          >
-            Завантажити демо-дані
+          <button onClick={openAddForm} className="btn-primary mt-6">
+            <Plus size={17} />
+            Додати транзакцію
           </button>
         </div>
       ) : (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-6">
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-5 @4xl:grid-cols-4">
+            <div className="relative col-span-2 overflow-hidden rounded-card bg-linear-to-br from-olive-deep to-olive p-6 text-white shadow-card">
+              <svg className="absolute -right-10 -top-10 size-56 opacity-15" viewBox="0 0 200 200" fill="none" stroke="currentColor">
+                <circle cx="100" cy="100" r="40" />
+                <circle cx="100" cy="100" r="62" />
+                <circle cx="100" cy="100" r="84" />
+              </svg>
+              <p className="text-sm text-white/70">Загальний баланс</p>
+              <p className="mt-2 font-display text-[34px] font-semibold leading-none tracking-tight">
+                {formatMoney(balance)}
+              </p>
+              <div className="mt-6 flex flex-wrap items-center gap-2 text-sm">
+                <span className="chip bg-white/15 text-white">
+                  {stats.balance >= 0 ? "Заощаджено" : "Перевитрата"} {formatMoney(Math.abs(stats.balance))}
+                </span>
+                {stats.total_income > 0 && (
+                  <span className="chip bg-white/15 text-white">
+                    {Math.round(stats.savings_rate * 100)}% доходу збережено
+                  </span>
+                )}
+              </div>
+            </div>
             <KpiTile
-              label="Загальний баланс"
-              value={`${stats.balance.toLocaleString("uk-UA")} ₴`}
-              iconPath="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+              label="Доходи"
+              value={formatMoney(stats.total_income)}
+              icon={ArrowUpRight}
+              change={change.income_change}
+              changeHint={changeHint}
             />
             <KpiTile
               label="Витрати"
-              value={`${stats.total_expenses.toLocaleString("uk-UA")} ₴`}
-              iconPath="M19 14l-7 7-7-7M12 21V3"
-            />
-            <KpiTile
-              label="Доходи"
-              value={`${stats.total_income.toLocaleString("uk-UA")} ₴`}
-              iconPath="M5 10l7-7 7 7M12 3v18"
+              value={formatMoney(stats.total_expenses)}
+              icon={ArrowDownRight}
+              change={change.expense_change}
+              changeHint={changeHint}
+              invertTrend
             />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-6">
-            <CashflowChart data={stats.cashflow} />
-            <CategoryDonut data={stats.category_breakdown} total={stats.total_expenses} />
+          <DailyExpensesChart data={stats.cashflow} average={stats.avg_daily_expense} />
+
+          <div className="grid grid-cols-1 gap-5 @2xl:grid-cols-5">
+            <div className="@2xl:col-span-3">
+              <CategoryDonut
+                data={stats.category_breakdown}
+                total={stats.total_expenses}
+                onSelectCategory={(c) => navigate(`/transactions?category=${encodeURIComponent(c)}`)}
+              />
+            </div>
+            <div className="@2xl:col-span-2">
+              <BudgetList budgets={stats.budgets} onConfigure={() => setBudgetsOpen(true)} />
+            </div>
           </div>
 
-          {stats.budgets.length > 0 && (
-            <div className="grid grid-cols-1 gap-5 mb-6">
-              <BudgetList budgets={stats.budgets} />
+          <div className="card p-4">
+            <div className="mb-2 flex items-center justify-between px-2 pt-1">
+              <h3 className="card-title">Останні транзакції</h3>
+              <Link to="/transactions" className="flex items-center gap-0.5 text-sm font-medium text-olive hover:text-olive-deep">
+                Усі транзакції
+                <ChevronRight size={16} />
+              </Link>
             </div>
-          )}
-
-          <div className="card overflow-hidden">
-            <div
-              className="flex items-center justify-between px-6 py-4 border-b border-c"
-              style={{ background: "var(--surface-soft)" }}
-            >
-              <h3 className="text-sm font-semibold tracking-tight text-ink">Останні транзакції</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left min-w-[640px]">
-                <thead className="table-head text-xs border-b">
-                  <tr>
-                    <th className="px-6 py-3 font-medium">Дата</th>
-                    <th className="px-6 py-3 font-medium">Категорія</th>
-                    <th className="px-6 py-3 font-medium">Опис</th>
-                    <th className="px-6 py-3 font-medium text-right">Сума</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-c-soft">
-                  {recent.map((transaction) => (
-                    <tr key={transaction.id} className="table-row">
-                      <td className="px-6 py-3 font-mono text-muted text-xs">
-                        {new Date(transaction.spent_at).toLocaleDateString("uk-UA")}
-                      </td>
-                      <td className="px-6 py-3">
-                        <span className="badge-cat inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium capitalize">
-                          {transaction.category}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 text-ink">{transaction.note}</td>
-                      <td
-                        className={`px-6 py-3 font-mono tabular-nums text-right font-medium ${
-                          transaction.amount > 0 ? "amount-pos" : "amount-neg"
-                        }`}
-                      >
-                        {transaction.amount > 0 ? "+" : ""}
-                        {transaction.amount.toLocaleString("uk-UA")} ₴
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <TransactionList transactions={monthTransactions.slice(0, 6)} />
           </div>
-        </>
+        </div>
       )}
-    </main>
+    </>
   );
 }

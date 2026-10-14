@@ -1,103 +1,54 @@
-import { useState } from "react";
-import { mockQuickPrompts } from "@finance/shared";
-import { useChatMock } from "../hooks/useChatMock";
+import { ArrowUp, Info, Sparkles, X } from "lucide-react";
+import { initialChatMessages, mockQuickPrompts } from "@finance/shared";
+import { useUi } from "../context/UiContext";
 
 export function AiChatPanel() {
-  const { messages, sendMessage } = useChatMock();
-  const [draft, setDraft] = useState("");
-
-  const handleSend = () => {
-    if (!draft.trim()) return;
-    sendMessage(draft);
-    setDraft("");
-  };
+  const { toggleChat } = useUi();
 
   return (
-    <aside className="ai-panel w-full lg:w-[360px] flex flex-col shrink-0">
-      <div className="h-16 border-b border-c px-5 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <svg className="icon w-4 h-4" style={{ color: "var(--accent)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-          <span className="font-display font-semibold text-[14px] text-ink">AI-Асистент</span>
+    <aside className="card my-4 mr-4 flex w-[360px] shrink-0 flex-col overflow-hidden">
+      <div className="flex items-center justify-between border-b border-line-soft px-5 py-4">
+        <div className="flex items-center gap-2.5">
+          <span className="inline-flex size-8 items-center justify-center rounded-xl bg-olive-tint text-olive">
+            <Sparkles size={16} />
+          </span>
+          <div>
+            <p className="text-sm font-semibold leading-tight">AI-асистент</p>
+            <p className="text-xs text-muted">SQL + семантичний пошук</p>
+          </div>
         </div>
-        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--positive)" }} />
-          Онлайн
-        </span>
+        <button onClick={toggleChat} className="btn-icon size-8" aria-label="Сховати асистента">
+          <X size={16} />
+        </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-6 space-y-5">
-        {messages.map((message) => {
-          if (message.role === "user") {
-            return (
-              <div key={message.id} className="flex justify-end">
-                <div className="bubble-user rounded-xl rounded-tr-sm px-4 py-2.5 text-sm font-medium max-w-[85%]">
-                  {message.content}
-                </div>
-              </div>
-            );
-          }
+      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        {initialChatMessages.map((message) => (
+          <div key={message.id} className="max-w-[92%] rounded-2xl rounded-bl-md bg-surface-soft px-4 py-3 text-sm leading-relaxed text-ink-soft ring-1 ring-line-soft">
+            {message.content}
+          </div>
+        ))}
 
-          return (
-            <div key={message.id}>
-              {message.tool_call && (
-                <div className="flex items-center gap-1.5 text-[10px] font-mono tool-badge mb-2">
-                  <svg className="icon w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path d="M5 13l4 4L19 7" />
-                  </svg>
-                  {message.tool_call.name} · {message.tool_call.kind.toUpperCase()} · {message.tool_call.duration_ms} мс
-                </div>
-              )}
-              <div className="bubble-assist rounded-xl px-4 py-3 text-sm text-ink-soft leading-relaxed">
-                {message.content}
-              </div>
-            </div>
-          );
-        })}
-
-        <div className="space-y-2 pt-1">
-          <p className="text-[11px] font-medium text-muted uppercase tracking-wider mb-2.5">Швидкі запити</p>
+        <div className="space-y-2 pt-2">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Приклади запитів</p>
           {mockQuickPrompts.map((prompt) => (
-            <button
-              key={prompt}
-              onClick={() => sendMessage(prompt)}
-              className="quick-prompt w-full text-left rounded-lg px-3 py-2 text-xs"
-            >
+            <div key={prompt} className="rounded-xl border border-dashed border-line px-3.5 py-2.5 text-xs text-muted">
               {prompt}
-            </button>
+            </div>
           ))}
         </div>
       </div>
 
-      <div className="p-4 border-t border-c" style={{ background: "var(--surface-soft)" }}>
-        <div className="composer relative rounded-lg transition-all">
-          <textarea
-            rows={1}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder="Задай питання асистенту..."
-            className="w-full bg-transparent text-sm text-ink placeholder:text-muted pl-3 pr-10 py-2.5 resize-none outline-none"
-            style={{ minHeight: 40 }}
-          />
-          <button
-            onClick={handleSend}
-            className="absolute right-2 bottom-2 p-1 rounded-md text-muted hover:text-ink transition-colors"
-          >
-            <svg className="icon w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </button>
+      <div className="border-t border-line-soft p-4">
+        <div className="mb-3 flex gap-2 rounded-xl bg-gold-tint px-3 py-2.5 text-xs text-gold">
+          <Info size={15} className="mt-px shrink-0" />
+          Асистент запрацює після підключення серверної частини.
         </div>
-        <div className="flex justify-between items-center mt-2 px-1">
-          <span className="text-[10px] text-muted font-mono">2 звернення до LLM на запит</span>
-          <span className="text-[10px] text-muted font-mono">⌘ Enter</span>
+        <div className="flex items-center gap-2 rounded-2xl border border-line bg-surface-soft p-1.5 pl-3.5">
+          <input disabled placeholder="Запитайте про свої витрати…" className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" />
+          <button disabled className="inline-flex size-9 items-center justify-center rounded-xl bg-line text-muted">
+            <ArrowUp size={17} />
+          </button>
         </div>
       </div>
     </aside>
