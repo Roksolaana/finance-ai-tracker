@@ -2,12 +2,12 @@ import { KpiTile } from "../components/KpiTile";
 import { CashflowChart } from "../components/CashflowChart";
 import { CategoryDonut } from "../components/CategoryDonut";
 import { BudgetList } from "../components/BudgetList";
+import { computeMonthStats } from "@finance/shared";
 import { useTransactions } from "../context/TransactionsContext";
-import { computeDashboardStats } from "../lib/stats";
 
 export function DashboardPage() {
-  const { transactions, loadDemoData } = useTransactions();
-  const stats = computeDashboardStats(transactions);
+  const { transactions, resetDemoData: loadDemoData, selectedMonth } = useTransactions();
+  const stats = computeMonthStats(transactions, selectedMonth);
   const recent = transactions.slice(0, 5);
 
   return (

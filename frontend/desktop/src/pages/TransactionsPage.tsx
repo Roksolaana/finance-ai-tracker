@@ -8,7 +8,7 @@ const PER_PAGE = 5;
 type SortKey = "spent_at" | "amount";
 
 export function TransactionsPage() {
-  const { transactions, addTransaction, loadDemoData } = useTransactions();
+  const { transactions, addTransaction, resetDemoData: loadDemoData } = useTransactions();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<TransactionCategory | "all">("all");
   const [sortKey, setSortKey] = useState<SortKey>("spent_at");

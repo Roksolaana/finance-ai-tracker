@@ -1,10 +1,8 @@
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { CATEGORIES, type TransactionCategory } from "@finance/shared";
+import { EXPENSE_CATEGORIES, type TransactionCategory } from "@finance/shared";
 
 type TransactionKind = "expense" | "income";
-
-const EXPENSE_CATEGORIES = CATEGORIES.filter((c) => c !== "дохід");
 
 interface AddTransactionDialogProps {
   onAdd: (input: {

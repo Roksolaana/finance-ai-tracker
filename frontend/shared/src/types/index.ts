@@ -1,9 +1,12 @@
 export type TransactionCategory =
   | "їжа"
+  | "кафе"
   | "транспорт"
   | "розваги"
   | "комунальні"
   | "підписки"
+  | "здоров'я"
+  | "покупки"
   | "дохід"
   | "інше";
 
@@ -85,4 +88,20 @@ export interface DashboardStats {
   category_breakdown: CategoryBreakdownEntry[];
   cashflow: CashflowPoint[];
   budgets: BudgetLimit[];
+  transaction_count: number;
+  avg_daily_expense: number;
+  savings_rate: number;
+}
+
+export interface MonthlySummary {
+  month: string;
+  income: number;
+  expense: number;
+  net: number;
+}
+
+export interface PeriodComparison {
+  income_change: number | null;
+  expense_change: number | null;
+  balance_change: number | null;
 }
