@@ -37,7 +37,9 @@ function Shell() {
           </Routes>
         </div>
       </main>
-      {chatOpen && <AiChatPanel />}
+      {/* Панель лишається змонтованою, лише ховається: інакше згортання
+          стирало всю розмову, а відповідь на запит у польоті губилася. */}
+      <AiChatPanel hidden={!chatOpen} />
 
       <TransactionFormDialog />
       <TransactionDetailsSheet />

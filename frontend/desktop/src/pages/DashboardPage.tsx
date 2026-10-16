@@ -12,7 +12,7 @@ import { TransactionList } from "../components/TransactionList";
 import { formatMoney, formatMonth } from "../lib/format";
 
 export function DashboardPage() {
-  const { transactions, selectedMonth, monthStats, loadError, reload } = useTransactions();
+  const { transactions, selectedMonth, monthStats, statsFailed, reload } = useTransactions();
   const { openAddForm, setBudgetsOpen } = useUi();
   const navigate = useNavigate();
 
@@ -23,7 +23,7 @@ export function DashboardPage() {
       <>
         <TopBar title="Огляд" subtitle={`Ваші фінанси за ${formatMonth(selectedMonth).toLowerCase()}`} />
         <div className="card flex flex-col items-center px-6 py-16 text-center">
-          {loadError ? (
+          {statsFailed ? (
             <>
               <p className="text-sm text-muted">Не вдалося порахувати статистику.</p>
               <button onClick={reload} className="btn-ghost mt-4">

@@ -8,6 +8,8 @@ export interface ChatReply {
   transactions: Transaction[];
 }
 
+const HISTORY_LIMIT = 10;
+
 export function createChatApi(baseUrl: string = API_URL) {
   const root = `${baseUrl}/chat`;
 
@@ -22,7 +24,9 @@ export function createChatApi(baseUrl: string = API_URL) {
         method: "POST",
         body: JSON.stringify({
           message,
-          history: history.map(({ role, content }) => ({ role, content })),
+          // Сервер усе одно бере лише кілька останніх, а схема обмежує довжину
+          // списку — надсилати всю розмову немає сенсу й вона б її відхилила.
+          history: history.slice(-HISTORY_LIMIT).map(({ role, content }) => ({ role, content })),
         }),
       });
     },

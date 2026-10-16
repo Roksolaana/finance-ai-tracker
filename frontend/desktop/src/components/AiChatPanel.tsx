@@ -14,6 +14,15 @@ import { formatMoney } from "../lib/format";
 
 const chatApi = createChatApi("/api/v1");
 
+// crypto.randomUUID доступний лише в захищеному контексті. Застосунок, відкритий
+// за локальною IP-адресою (http://192.168.x.x:8000), таким не є, і виклик кидав
+// помилку ще до появи повідомлення — кнопка «Надіслати» просто не працювала.
+let localIdCounter = 0;
+function localId(): string {
+  localIdCounter += 1;
+  return `local-${Date.now()}-${localIdCounter}`;
+}
+
 // Який шлях обробки дав відповідь — ядро теми роботи, тому показуємо явно.
 const TOOL_LABELS: Record<ToolKind, { label: string; icon: typeof Database }> = {
   sql: { label: "SQL-агрегація", icon: Database },
@@ -50,7 +59,7 @@ function FoundTransactions({ items }: { items: Transaction[] }) {
   );
 }
 
-export function AiChatPanel() {
+export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
   const { toggleChat } = useUi();
   const [messages, setMessages] = useState<ChatMessage[]>(initialChatMessages);
   const [found, setFound] = useState<Record<string, Transaction[]>>({});
@@ -58,25 +67,34 @@ export function AiChatPanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [statusFailed, setStatusFailed] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     chatApi
       .status()
-      .then(setEnabled)
-      .catch(() => setEnabled(false));
+      .then((value) => {
+        setEnabled(value);
+        setStatusFailed(false);
+      })
+      .catch(() => {
+        // Недоступний сервер — не те саме, що невказаний ключ.
+        setEnabled(false);
+        setStatusFailed(true);
+      });
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, sending]);
+    if (hidden) return;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [messages, sending, hidden]);
 
   const send = async (text: string) => {
     const question = text.trim();
     if (!question || sending) return;
 
     const outgoing: ChatMessage = {
-      id: `local-${crypto.randomUUID()}`,
+      id: localId(),
       role: "user",
       content: question,
       timestamp: new Date().toISOString(),
@@ -100,7 +118,10 @@ export function AiChatPanel() {
   };
 
   return (
-    <aside className="card my-4 mr-4 flex w-[360px] shrink-0 flex-col overflow-hidden">
+    <aside
+      hidden={hidden}
+      className="card my-4 mr-4 flex w-[360px] shrink-0 flex-col overflow-hidden"
+    >
       <div className="flex items-center justify-between border-b border-line-soft px-5 py-4">
         <div className="flex items-center gap-2.5">
           <span className="inline-flex size-8 items-center justify-center rounded-xl bg-olive-tint text-olive">
@@ -113,7 +134,7 @@ export function AiChatPanel() {
         </button>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+      <div role="log" aria-live="polite" className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
         {messages.map((message) => (
           <div
             key={message.id}
@@ -163,7 +184,9 @@ export function AiChatPanel() {
         {enabled === false && (
           <div className="mb-3 flex gap-2 rounded-xl bg-gold-tint px-3 py-2.5 text-xs text-gold">
             <Info size={15} className="mt-px shrink-0" />
-            Асистент вимкнений: на сервері не задано ключ LLM.
+            {statusFailed
+              ? "Не вдалося звʼязатися із сервером. Асистент тимчасово недоступний."
+              : "Асистент вимкнений: на сервері не задано ключ LLM."}
           </div>
         )}
         {error && (

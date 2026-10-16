@@ -18,6 +18,7 @@ interface TransactionsContextValue {
   monthStats: MonthStats | null;
   loading: boolean;
   loadError: string | null;
+  statsFailed: boolean;
   reload: () => Promise<void>;
   addTransaction: (input: TransactionInput) => Promise<void>;
   updateTransaction: (id: string, input: TransactionInput) => Promise<void>;
@@ -41,13 +42,20 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [monthStats, setMonthStats] = useState<MonthStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // Дві незалежні помилки: успіх статистики раніше затирав повідомлення про
+  // те, що не завантажився список транзакцій, і користувач бачив заповнений
+  // дашборд із порожньою таблицею без жодного пояснення.
+  const [listError, setListError] = useState<string | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
   // Порожньо до завантаження: ліміти тепер живуть у БД, а не в дефолтах коду.
   const [budgetLimits, storeBudgetLimits] = useState<BudgetLimits>({});
   const [selectedMonth, setSelectedMonth] = useState(() => monthKey(new Date()));
   // Будь-яка зміна даних підіймає версію — це перезапитує статистику.
   const [dataVersion, setDataVersion] = useState(0);
   const loadingRef = useRef(false);
+  // Лічильник локальних змін. Якщо поки тривало завантаження списку
+  // користувач щось додав, стара відповідь уже неактуальна.
+  const mutationsRef = useRef(0);
 
   const invalidateStats = useCallback(() => setDataVersion((v) => v + 1), []);
 
@@ -57,13 +65,15 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
     // перезаписати новішу.
     if (loadingRef.current) return;
     loadingRef.current = true;
+    const mutationsAtStart = mutationsRef.current;
     try {
       const [loadedTransactions, loadedLimits] = await Promise.all([api.list(), budgetsApi.get()]);
-      setTransactions(loadedTransactions);
+      // Під час запиту додали чи видалили транзакцію — ця відповідь застаріла.
+      if (mutationsRef.current === mutationsAtStart) setTransactions(loadedTransactions);
       storeBudgetLimits(loadedLimits);
-      setLoadError(null);
+      setListError(null);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Не вдалося завантажити дані");
+      setListError(e instanceof Error ? e.message : "Не вдалося завантажити дані");
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -92,15 +102,20 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    // Скидаємо перед запитом: інакше при перемиканні місяця на екрані
+    // лишалися б цифри попереднього під новим заголовком, а при збої
+    // запиту вони б так і висіли як актуальні.
+    setMonthStats(null);
+    setStatsError(null);
     statsApi
       .month(selectedMonth)
       .then((stats) => {
-        if (cancelled) return;
-        setMonthStats(stats);
-        setLoadError(null);
+        if (!cancelled) setMonthStats(stats);
       })
       .catch((e) => {
-        if (!cancelled) setLoadError(e instanceof Error ? e.message : "Не вдалося порахувати статистику");
+        if (!cancelled) {
+          setStatsError(e instanceof Error ? e.message : "Не вдалося порахувати статистику");
+        }
       });
     return () => {
       cancelled = true;
@@ -112,27 +127,32 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
       transactions: [...transactions].sort(bySpentAtDesc),
       monthStats,
       loading,
-      loadError,
+      loadError: listError ?? statsError,
+      statsFailed: statsError !== null,
       reload,
       addTransaction: async (input) => {
         const created = await api.create(input);
+        mutationsRef.current += 1;
         setTransactions((prev) => [created, ...prev]);
         invalidateStats();
       },
       updateTransaction: async (id, input) => {
         const updated = await api.update(id, input);
+        mutationsRef.current += 1;
         setTransactions((prev) => prev.map((t) => (t.id === id ? updated : t)));
         invalidateStats();
       },
       deleteTransaction: async (id) => {
         const removed = transactions.find((t) => t.id === id);
         await api.remove(id);
+        mutationsRef.current += 1;
         setTransactions((prev) => prev.filter((t) => t.id !== id));
         invalidateStats();
         return removed;
       },
       restoreTransaction: async ({ amount, category, note, spent_at }) => {
         const created = await api.create({ amount, category, note, spent_at });
+        mutationsRef.current += 1;
         setTransactions((prev) => [created, ...prev]);
         invalidateStats();
       },
@@ -144,7 +164,7 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
       selectedMonth,
       setSelectedMonth,
     }),
-    [transactions, monthStats, loading, loadError, reload, invalidateStats, budgetLimits, selectedMonth],
+    [transactions, monthStats, loading, listError, statsError, reload, invalidateStats, budgetLimits, selectedMonth],
   );
 
   return <TransactionsContext.Provider value={value}>{children}</TransactionsContext.Provider>;

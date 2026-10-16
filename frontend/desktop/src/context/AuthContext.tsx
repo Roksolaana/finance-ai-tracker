@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { createAuthApi, setAuthToken, setUnauthorizedHandler, type AuthUser } from "@finance/shared";
+import { ApiError, createAuthApi, setAuthToken, setUnauthorizedHandler, type AuthUser } from "@finance/shared";
 
 const authApi = createAuthApi("/api/v1");
 const TOKEN_KEY = "krona.token";
@@ -61,9 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authApi
       .me()
       .then((loaded) => !cancelled && setUser(loaded))
-      .catch(() => {
-        // Недійсний або прострочений токен — прибираємо його.
-        if (!cancelled) {
+      .catch((error) => {
+        if (cancelled) return;
+        // Токен прибираємо лише коли сервер його відхилив. Якщо бекенд просто
+        // недоступний (ще не піднявся, перезапускається), користувача не
+        // можна мовчки виганяти з акаунта.
+        const rejected = error instanceof ApiError && (error.status === 401 || error.status === 403);
+        if (rejected) {
           setAuthToken(null);
           writeToken(null);
         }

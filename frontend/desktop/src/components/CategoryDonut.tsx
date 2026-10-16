@@ -32,7 +32,7 @@ export function CategoryDonut({ data, total, onSelectCategory }: CategoryDonutPr
                   isAnimationActive={false}
                 >
                   {data.map((entry) => (
-                    <Cell key={entry.category} fill={CATEGORY_COLORS[entry.category]} />
+                    <Cell key={entry.category} fill={CATEGORY_COLORS[entry.category] ?? CATEGORY_COLORS["інше"]} />
                   ))}
                 </Pie>
                 <Tooltip

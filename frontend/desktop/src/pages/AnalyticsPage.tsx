@@ -58,7 +58,7 @@ const statsApi = createStatsApi("/api/v1");
 const MONTHS_IN_WINDOW = 6;
 
 export function AnalyticsPage() {
-  const { transactions, selectedMonth, monthStats, loadError, reload } = useTransactions();
+  const { transactions, selectedMonth, monthStats, statsFailed, reload } = useTransactions();
   const [monthly, setMonthly] = useState<MonthlyStats | null>(null);
   const [monthlyFailed, setMonthlyFailed] = useState(false);
 
@@ -79,7 +79,7 @@ export function AnalyticsPage() {
   }, [selectedMonth, monthStats]);
 
   if (!monthStats || !monthly) {
-    const failed = monthlyFailed || !!loadError;
+    const failed = monthlyFailed || statsFailed;
     return (
       <>
         <TopBar title="Аналітика" subtitle={`Пів року до ${formatMonthGenitive(selectedMonth)} включно`} />
