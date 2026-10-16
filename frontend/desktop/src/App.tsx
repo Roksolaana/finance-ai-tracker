@@ -4,6 +4,7 @@ import { AiChatPanel } from "./components/AiChatPanel";
 import { TransactionFormDialog } from "./components/TransactionFormDialog";
 import { TransactionDetailsSheet } from "./components/TransactionDetailsSheet";
 import { BudgetsDialog } from "./components/BudgetsDialog";
+import { ProfileDialog } from "./components/ProfileDialog";
 import { Toasts } from "./components/Toasts";
 import { DashboardPage } from "./pages/DashboardPage";
 import { TransactionsPage } from "./pages/TransactionsPage";
@@ -44,6 +45,7 @@ function Shell() {
       <TransactionFormDialog />
       <TransactionDetailsSheet />
       <BudgetsDialog />
+      <ProfileDialog />
       <Toasts />
     </div>
   );

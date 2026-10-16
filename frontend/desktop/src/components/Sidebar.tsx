@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
-import { ChartPie, LayoutDashboard, LogOut, ReceiptText, Sprout } from "lucide-react";
+import { ChartPie, ChevronRight, LayoutDashboard, ReceiptText, Sprout } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useUi } from "../context/UiContext";
 
 const navItems = [
   { to: "/", label: "Огляд", icon: LayoutDashboard },
@@ -9,7 +10,8 @@ const navItems = [
 ];
 
 export function Sidebar() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const { setProfileOpen } = useUi();
 
   // Перші літери імені: «Марія Коваль» → «МК», одне слово → одна літера.
   const initials = (user?.display_name ?? "")
@@ -48,7 +50,11 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="flex items-center gap-3 rounded-2xl bg-surface p-3 shadow-card">
+      <button
+        onClick={() => setProfileOpen(true)}
+        className="flex w-full items-center gap-3 rounded-2xl bg-surface p-3 text-left shadow-card transition-colors hover:bg-milk-deep"
+        aria-label="Відкрити профіль"
+      >
         <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-olive-tint text-xs font-semibold uppercase text-olive">
           {initials}
         </div>
@@ -56,10 +62,8 @@ export function Sidebar() {
           <p className="truncate text-sm font-medium leading-tight">{user?.display_name}</p>
           <p className="truncate text-xs text-muted">{user?.email}</p>
         </div>
-        <button onClick={logout} className="btn-icon size-8 shrink-0" title="Вийти" aria-label="Вийти з акаунта">
-          <LogOut size={15} />
-        </button>
-      </div>
+        <ChevronRight size={16} className="shrink-0 text-muted" />
+      </button>
     </aside>
   );
 }

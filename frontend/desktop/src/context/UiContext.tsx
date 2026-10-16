@@ -19,6 +19,8 @@ interface UiContextValue {
   closeDetails: () => void;
   budgetsOpen: boolean;
   setBudgetsOpen: (open: boolean) => void;
+  profileOpen: boolean;
+  setProfileOpen: (open: boolean) => void;
   chatOpen: boolean;
   toggleChat: () => void;
   toasts: Toast[];
@@ -32,6 +34,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const [form, setForm] = useState<FormState>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [budgetsOpen, setBudgetsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -60,13 +63,15 @@ export function UiProvider({ children }: { children: ReactNode }) {
       closeDetails: () => setDetailsId(null),
       budgetsOpen,
       setBudgetsOpen,
+      profileOpen,
+      setProfileOpen,
       chatOpen,
       toggleChat: () => setChatOpen((v) => !v),
       toasts,
       showToast,
       dismissToast,
     }),
-    [form, detailsId, budgetsOpen, chatOpen, toasts, showToast, dismissToast],
+    [form, detailsId, budgetsOpen, profileOpen, chatOpen, toasts, showToast, dismissToast],
   );
 
   return <UiContext.Provider value={value}>{children}</UiContext.Provider>;

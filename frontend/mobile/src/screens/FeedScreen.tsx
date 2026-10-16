@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CATEGORY_COLORS, dayKey, monthKey, type Transaction } from "@finance/shared";
 import { statsApi, transactionsApi } from "@/api";
 import { theme } from "@/theme";
+import { TransactionDetail } from "@/screens/TransactionDetail";
 
 function formatMoney(value: number): string {
   const abs = Math.abs(value);
@@ -36,6 +37,7 @@ export function FeedScreen({ dataVersion, onChanged }: { dataVersion: number; on
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Transaction | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -85,6 +87,7 @@ export function FeedScreen({ dataVersion, onChanged }: { dataVersion: number; on
           try {
             await transactionsApi.remove(transaction.id);
             setItems((prev) => prev.filter((t) => t.id !== transaction.id));
+            setSelected(null);
             onChanged();
           } catch (err) {
             Alert.alert("Не вдалося видалити", err instanceof Error ? err.message : "");
@@ -143,9 +146,9 @@ export function FeedScreen({ dataVersion, onChanged }: { dataVersion: number; on
         )}
         renderItem={({ item }) => (
           <Pressable
-            onLongPress={() => remove(item)}
+            onPress={() => setSelected(item)}
             accessibilityRole="button"
-            accessibilityHint="Утримуйте, щоб видалити"
+            accessibilityHint="Відкрити деталі транзакції"
             style={styles.row}
           >
             <View
@@ -167,6 +170,8 @@ export function FeedScreen({ dataVersion, onChanged }: { dataVersion: number; on
           </Pressable>
         )}
       />
+
+      <TransactionDetail transaction={selected} onClose={() => setSelected(null)} onDelete={remove} />
     </View>
   );
 }

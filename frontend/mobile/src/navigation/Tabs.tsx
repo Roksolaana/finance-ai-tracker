@@ -2,20 +2,22 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { theme } from "@/theme";
+import { OverviewScreen } from "@/screens/OverviewScreen";
 import { AddScreen } from "@/screens/AddScreen";
 import { FeedScreen } from "@/screens/FeedScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 
-type TabKey = "add" | "feed" | "chat";
+type TabKey = "overview" | "add" | "feed" | "chat";
 
 const TABS: { key: TabKey; label: string; icon: string }[] = [
+  { key: "overview", label: "Огляд", icon: "◱" },
   { key: "add", label: "Додати", icon: "+" },
   { key: "feed", label: "Транзакції", icon: "≡" },
   { key: "chat", label: "Асистент", icon: "✦" },
 ];
 
 export function Tabs() {
-  const [active, setActive] = useState<TabKey>("add");
+  const [active, setActive] = useState<TabKey>("overview");
   const insets = useSafeAreaInsets();
   // Додані транзакції мають одразу зʼявлятися у стрічці та враховуватись
   // асистентом, тому перемальовуємо вкладки за спільним лічильником.
@@ -25,6 +27,7 @@ export function Tabs() {
   return (
     <View style={styles.root}>
       <View style={styles.content}>
+        {active === "overview" && <OverviewScreen dataVersion={dataVersion} />}
         {active === "add" && <AddScreen onSaved={refresh} />}
         {active === "feed" && <FeedScreen dataVersion={dataVersion} onChanged={refresh} />}
         {active === "chat" && <ChatScreen />}
