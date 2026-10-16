@@ -19,7 +19,7 @@ function Gate() {
   return user ? <Tabs /> : <AuthScreen />;
 }
 
-export default function RootLayout() {
+export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
