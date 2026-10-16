@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Крона",
+    "slug": "krona",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "krona",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F5EE"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.krona.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#5A6B3A"
+      },
+      "package": "com.krona.app"
+    },
+    "plugins": ["expo-router", "expo-secure-store"]
+  }
+}
