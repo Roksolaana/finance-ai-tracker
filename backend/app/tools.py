@@ -63,11 +63,19 @@ async def query_transactions(
     date_from: str | None = None,
     date_to: str | None = None,
     tx_type: str | None = None,
+    min_amount: float | None = None,
+    max_amount: float | None = None,
 ) -> ToolOutcome:
     """Детермінована агрегація через SQL."""
     conditions = [Transaction.user_id == user_id, *_date_bounds(date_from, date_to)]
     if category:
         conditions.append(Transaction.category == category)
+    # Порівнюємо за модулем: користувач каже «витрати понад тисячу», маючи на
+    # увазі розмір суми, а не те, що вона відʼємна.
+    if min_amount is not None:
+        conditions.append(func.abs(Transaction.amount) >= min_amount)
+    if max_amount is not None:
+        conditions.append(func.abs(Transaction.amount) <= max_amount)
     if tx_type == "income":
         conditions.append(Transaction.amount > 0)
     elif tx_type == "expense":
@@ -191,6 +199,8 @@ def tool_schemas() -> list[dict[str, Any]]:
                         },
                         "category": {"type": ["string", "null"], "enum": [*CATEGORIES, None]},
                         "tx_type": {"type": ["string", "null"], "enum": ["income", "expense", None]},
+                        "min_amount": {"type": ["number", "null"], "description": "Лише суми не менші за це (за модулем)"},
+                        "max_amount": {"type": ["number", "null"], "description": "Лише суми не більші за це (за модулем)"},
                         **period,
                     },
                     "required": ["aggregation"],

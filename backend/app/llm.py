@@ -1,5 +1,6 @@
 """Клієнт до LLM (Groq через OpenAI-сумісний API)."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -10,6 +11,7 @@ from app.database import settings
 logger = logging.getLogger(__name__)
 
 TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+RATE_LIMIT_RETRIES = 3
 
 
 class LLMUnavailable(RuntimeError):
@@ -39,22 +41,43 @@ async def chat_completion(
         body["tools"] = tools
         body["tool_choice"] = "auto"
 
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            response = await client.post(
-                f"{settings.LLM_BASE_URL}/chat/completions",
-                json=body,
-                headers={
-                    "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-                    # Без власного User-Agent Cloudflare перед Groq віддає 403.
-                    "User-Agent": "krona/0.1",
-                },
-            )
-    except httpx.HTTPError as exc:
-        raise LLMUnavailable("Не вдалося звʼязатися з сервісом LLM") from exc
+    headers = {
+        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+        # Без власного User-Agent Cloudflare перед Groq віддає 403.
+        "User-Agent": "krona/0.1",
+    }
 
-    if response.status_code != 200:
-        logger.error("LLM відповів %s: %s", response.status_code, response.text[:500])
-        raise LLMUnavailable(f"Сервіс LLM повернув помилку ({response.status_code})")
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        for attempt in range(RATE_LIMIT_RETRIES + 1):
+            try:
+                response = await client.post(
+                    f"{settings.LLM_BASE_URL}/chat/completions", json=body, headers=headers
+                )
+            except httpx.HTTPError as exc:
+                raise LLMUnavailable("Не вдалося звʼязатися з сервісом LLM") from exc
 
-    return response.json()["choices"][0]["message"]
+            # На безкоштовному тарифі ліміт 30 запитів/хв; чекаємо й пробуємо ще.
+            if response.status_code == 429 and attempt < RATE_LIMIT_RETRIES:
+                await asyncio.sleep(_retry_delay(response, attempt))
+                continue
+
+            if response.status_code == 429:
+                raise LLMUnavailable("Перевищено ліміт запитів до LLM, спробуйте за хвилину")
+            if response.status_code != 200:
+                logger.error("LLM відповів %s: %s", response.status_code, response.text[:500])
+                raise LLMUnavailable(f"Сервіс LLM повернув помилку ({response.status_code})")
+
+            return response.json()["choices"][0]["message"]
+
+    raise LLMUnavailable("Сервіс LLM недоступний")
+
+
+def _retry_delay(response: httpx.Response, attempt: int) -> float:
+    """Скільки чекати перед повтором: за заголовком провайдера або з запасом."""
+    header = response.headers.get("retry-after")
+    if header:
+        try:
+            return min(float(header), 30.0)
+        except ValueError:
+            pass
+    return 2.0 * (attempt + 1)
