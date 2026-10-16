@@ -11,11 +11,15 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.database import engine
+from app.database import engine, settings
 from app.migrate import upgrade_to_head
 from app.routers import auth, budgets, chat, stats, transactions
 
 logger = logging.getLogger(__name__)
+
+# Значення, з якими застосунок запускається «з коробки» або які копіюють
+# з .env.example, не змінивши.
+INSECURE_JWT_SECRETS = {"dev-only-insecure-change-me", "change-me"}
 
 # Збірка десктоп-клієнта (frontend/desktop/dist) — віддається тим самим процесом,
 # щоб фронтенд і бекенд працювали на одному порту.
@@ -25,6 +29,14 @@ FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "desktop" / "
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: довести схему до останньої міграції. Shutdown: закрити пул."""
+    # З дефолтним ключем будь-хто може підписати токен на чужий user_id, тобто
+    # вся ізоляція даних стає декоративною. Мовчки працювати з ним не можна.
+    if settings.JWT_SECRET in INSECURE_JWT_SECRETS:
+        logger.warning(
+            "JWT_SECRET має значення за замовчуванням — токени можна підробити. "
+            "Згенеруйте свій: python -c \"import secrets; print(secrets.token_urlsafe(48))\" "
+            "і запишіть у backend/.env"
+        )
     try:
         # Alembic синхронний, тому виносимо його в окремий потік.
         await asyncio.to_thread(upgrade_to_head)

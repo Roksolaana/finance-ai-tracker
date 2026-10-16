@@ -30,14 +30,6 @@ export const CATEGORY_COLORS: Record<TransactionCategory, string> = {
   "інше": "#8A8A7A",
 };
 
-export const BUDGET_LIMITS: Partial<Record<TransactionCategory, number>> = {
-  "їжа": 6000,
-  "кафе": 2500,
-  "транспорт": 1200,
-  "розваги": 2000,
-  "покупки": 3000,
-};
-
 export const MONTH_NAMES = [
   "Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень",
   "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень",

@@ -16,7 +16,6 @@ interface TransactionsContextValue {
   transactions: Transaction[];
   /** Агрегати за вибраний місяць із `GET /stats/month`; null, поки вантажиться. */
   monthStats: MonthStats | null;
-  loading: boolean;
   loadError: string | null;
   statsFailed: boolean;
   reload: () => Promise<void>;
@@ -41,7 +40,6 @@ const bySpentAtDesc = (a: Transaction, b: Transaction) => b.spent_at.localeCompa
 export function TransactionsProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [monthStats, setMonthStats] = useState<MonthStats | null>(null);
-  const [loading, setLoading] = useState(true);
   // Дві незалежні помилки: успіх статистики раніше затирав повідомлення про
   // те, що не завантажився список транзакцій, і користувач бачив заповнений
   // дашборд із порожньою таблицею без жодного пояснення.
@@ -76,7 +74,6 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
       setListError(e instanceof Error ? e.message : "Не вдалося завантажити дані");
     } finally {
       loadingRef.current = false;
-      setLoading(false);
     }
   }, []);
 
@@ -126,7 +123,6 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
     () => ({
       transactions: [...transactions].sort(bySpentAtDesc),
       monthStats,
-      loading,
       loadError: listError ?? statsError,
       statsFailed: statsError !== null,
       reload,
@@ -164,7 +160,7 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
       selectedMonth,
       setSelectedMonth,
     }),
-    [transactions, monthStats, loading, listError, statsError, reload, invalidateStats, budgetLimits, selectedMonth],
+    [transactions, monthStats, listError, statsError, reload, invalidateStats, budgetLimits, selectedMonth],
   );
 
   return <TransactionsContext.Provider value={value}>{children}</TransactionsContext.Provider>;

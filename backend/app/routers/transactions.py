@@ -1,7 +1,7 @@
 """CRUD-ендпоінти для транзакцій."""
 
 import uuid
-from datetime import date, datetime, timedelta, timezone, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status

@@ -76,7 +76,9 @@ export function AnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedMonth, monthStats]);
+    // Залежність від примітива, а не від обʼєкта: ідентичність monthStats
+    // змінюється на кожне оновлення даних і тягла зайвий запит.
+  }, [selectedMonth, monthStats?.transaction_count]);
 
   if (!monthStats || !monthly) {
     const failed = monthlyFailed || statsFailed;

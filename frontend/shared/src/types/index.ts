@@ -19,15 +19,6 @@ export interface Transaction {
   created_at: string;
 }
 
-export interface TransactionFilters {
-  category?: TransactionCategory;
-  date_from?: string;
-  date_to?: string;
-  search?: string;
-  page?: number;
-  per_page?: number;
-}
-
 export interface TransactionList {
   items: Transaction[];
   total: number;
@@ -52,15 +43,6 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   tool_call?: ToolCallInfo;
-}
-
-export interface ChatRequest {
-  message: string;
-  history: ChatMessage[];
-}
-
-export interface ChatResponse {
-  message: ChatMessage;
 }
 
 export interface CategoryBreakdownEntry {

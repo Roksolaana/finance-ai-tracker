@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Database, Info, Layers, Search, Sparkles, X } from "lucide-react";
 import {
   createChatApi,
-  initialChatMessages,
-  mockQuickPrompts,
+  chatGreeting,
+  quickPrompts,
   type ChatMessage,
   type ToolKind,
   type Transaction,
@@ -61,7 +61,7 @@ function FoundTransactions({ items }: { items: Transaction[] }) {
 
 export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
   const { toggleChat } = useUi();
-  const [messages, setMessages] = useState<ChatMessage[]>(initialChatMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>(chatGreeting);
   const [found, setFound] = useState<Record<string, Transaction[]>>({});
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -162,10 +162,10 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
           </p>
         )}
 
-        {messages.length === 1 && !sending && (
+        {messages.length === chatGreeting.length && !sending && (
           <div className="space-y-2 pt-2">
             <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Приклади запитів</p>
-            {mockQuickPrompts.map((prompt) => (
+            {quickPrompts.map((prompt) => (
               <button
                 key={prompt}
                 onClick={() => send(prompt)}

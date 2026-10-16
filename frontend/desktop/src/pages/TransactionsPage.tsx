@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Download, Search, SearchX, X } from "lucide-react";
 import { CATEGORIES, filterByMonth, type TransactionCategory } from "@finance/shared";
@@ -19,9 +19,20 @@ export function TransactionsPage() {
   const [visible, setVisible] = useState(PAGE_SIZE);
 
   const search = params.get("q") ?? "";
-  const category = (params.get("category") ?? "all") as TransactionCategory | "all";
+  // Значення з URL може бути будь-яким: без перевірки у <select> не лишалося
+  // б жодного вибраного пункту, а фільтр мовчки нічого не знаходив.
+  const categoryParam = params.get("category");
+  const category: TransactionCategory | "all" =
+    categoryParam && (CATEGORIES as readonly string[]).includes(categoryParam)
+      ? (categoryParam as TransactionCategory)
+      : "all";
   const type = (params.get("type") ?? "all") as TypeFilter;
-  const allTime = params.get("period") === "all";
+  const allTimeParam = params.get("period");
+  const allTime = allTimeParam === "all";
+
+  // Інакше після переходу на інший місяць лишалася розгорнутою попередня
+  // кількість рядків, хоча список уже інший.
+  useEffect(() => setVisible(PAGE_SIZE), [selectedMonth, allTimeParam]);
 
   const updateParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
@@ -125,7 +136,13 @@ export function TransactionsPage() {
           </span>
           <div className="ml-auto flex items-center gap-2">
             {hasFilters && (
-              <button onClick={() => setParams(allTime ? { period: "all" } : {}, { replace: true })} className="btn-ghost h-9">
+              <button
+                onClick={() => {
+                  setParams(allTime ? { period: "all" } : {}, { replace: true });
+                  setVisible(PAGE_SIZE);
+                }}
+                className="btn-ghost h-9"
+              >
                 <X size={15} />
                 Скинути фільтри
               </button>

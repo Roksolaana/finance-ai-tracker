@@ -1,6 +1,6 @@
-import type { ChatMessage } from "../types";
+import type { ChatMessage } from "./types";
 
-export const initialChatMessages: ChatMessage[] = [
+export const chatGreeting: ChatMessage[] = [
   {
     id: "m1",
     role: "assistant",
@@ -10,7 +10,7 @@ export const initialChatMessages: ChatMessage[] = [
   },
 ];
 
-export const mockQuickPrompts: string[] = [
+export const quickPrompts: string[] = [
   "Скільки я витратив на каву цього місяця?",
   "Знайди витрати через стрес чи втому",
   "Яка категорія найбільша цього місяця?",
