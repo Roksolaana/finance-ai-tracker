@@ -23,18 +23,32 @@ import {
 import { useTransactions } from "../context/TransactionsContext";
 import { TopBar } from "../components/TopBar";
 import { TransactionRow } from "../components/TransactionList";
-import { CHART, formatCompact, formatDayLabel, formatMoney, formatMonth, formatMonthShort } from "../lib/format";
+import { CHART, formatCompact, formatDayLabel, formatMoney, formatMonth, formatMonthGenitive, formatMonthShort } from "../lib/format";
 
 const tooltipStyle = { borderRadius: 12, border: "1px solid #E7E3D4", fontSize: 12 };
 
-function Insight({ icon: Icon, label, value, hint }: { icon: LucideIcon; label: string; value: string; hint: string }) {
+function Insight({
+  icon: Icon,
+  label,
+  value,
+  hint,
+  // capitalize доречний лише для назви категорії: у даті він перетворював
+  // «3 жовтня» на «3 Жовтня».
+  capitalize = false,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  hint: string;
+  capitalize?: boolean;
+}) {
   return (
     <div className="card p-5">
       <span className="mb-3 inline-flex size-8 items-center justify-center rounded-xl bg-olive-tint text-olive">
         <Icon size={17} />
       </span>
       <p className="text-xs text-muted">{label}</p>
-      <p className="mt-1 text-lg font-semibold capitalize tracking-tight">{value}</p>
+      <p className={`mt-1 text-lg font-semibold tracking-tight${capitalize ? " capitalize" : ""}`}>{value}</p>
       <p className="mt-0.5 text-xs text-muted">{hint}</p>
     </div>
   );
@@ -68,7 +82,7 @@ export function AnalyticsPage() {
     const failed = monthlyFailed || !!loadError;
     return (
       <>
-        <TopBar title="Аналітика" subtitle={`Пів року до ${formatMonth(selectedMonth).toLowerCase()} включно`} />
+        <TopBar title="Аналітика" subtitle={`Пів року до ${formatMonthGenitive(selectedMonth)} включно`} />
         <div className="card flex flex-col items-center px-6 py-16 text-center">
           {failed ? (
             <>
@@ -106,7 +120,7 @@ export function AnalyticsPage() {
 
   return (
     <>
-      <TopBar title="Аналітика" subtitle={`Пів року до ${formatMonth(selectedMonth).toLowerCase()} включно`} />
+      <TopBar title="Аналітика" subtitle={`Пів року до ${formatMonthGenitive(selectedMonth)} включно`} />
 
       <div className="space-y-5">
         <div className="grid grid-cols-2 gap-4 @2xl:grid-cols-4">
@@ -119,6 +133,7 @@ export function AnalyticsPage() {
           <Insight
             icon={Crown}
             label="Найбільша категорія"
+            capitalize
             value={topCategory ? topCategory.category : "—"}
             hint={topCategory ? `${formatMoney(topCategory.amount)} · ${topCategory.percent}% витрат` : "немає витрат"}
           />

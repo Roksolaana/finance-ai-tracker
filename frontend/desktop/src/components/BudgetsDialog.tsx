@@ -69,6 +69,7 @@ export function BudgetsDialog() {
                 <div className="relative w-36">
                   <input
                     inputMode="numeric"
+                    aria-label={`Місячний ліміт, категорія «${c}»`}
                     value={draft[c] ?? ""}
                     onChange={(e) => setDraft((d) => ({ ...d, [c]: e.target.value.replace(/\D/g, "") }))}
                     placeholder="без ліміту"

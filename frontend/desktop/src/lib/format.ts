@@ -1,4 +1,4 @@
-import { MONTH_NAMES, MONTH_NAMES_SHORT } from "@finance/shared";
+import { MONTH_NAMES, MONTH_NAMES_GENITIVE, MONTH_NAMES_SHORT } from "@finance/shared";
 
 export const CHART = {
   income: "#A9B98A",
@@ -40,6 +40,12 @@ export function formatCompact(value: number) {
 export function formatMonth(key: string) {
   const [y, m] = key.split("-").map(Number);
   return `${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+/** «2026-10» → «жовтня 2026» — для зворотів на кшталт «до жовтня 2026 включно». */
+export function formatMonthGenitive(key: string) {
+  const [y, m] = key.split("-").map(Number);
+  return `${MONTH_NAMES_GENITIVE[m - 1]} ${y}`;
 }
 
 export function formatMonthShort(key: string) {

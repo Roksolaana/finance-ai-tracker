@@ -44,7 +44,12 @@ export function AiChatPanel() {
           Асистент запрацює після підключення серверної частини.
         </div>
         <div className="flex items-center gap-2 rounded-2xl border border-line bg-surface-soft p-1.5 pl-3.5">
-          <input disabled placeholder="Запитайте про свої витрати…" className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" />
+          <input
+            disabled
+            aria-label="Запит до AI-асистента"
+            placeholder="Запитайте про свої витрати…"
+            className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted"
+          />
           <button disabled className="inline-flex size-9 items-center justify-center rounded-xl bg-line text-muted">
             <ArrowUp size={17} />
           </button>
