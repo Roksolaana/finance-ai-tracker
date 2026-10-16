@@ -1,10 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  BUDGET_LIMITS,
   createBudgetsApi,
   createStatsApi,
   createTransactionsApi,
-  generateDemoTransactions,
   monthKey,
   type BudgetLimits,
   type MonthStats,
@@ -25,7 +23,6 @@ interface TransactionsContextValue {
   updateTransaction: (id: string, input: TransactionInput) => Promise<void>;
   deleteTransaction: (id: string) => Promise<Transaction | undefined>;
   restoreTransaction: (transaction: Transaction) => Promise<void>;
-  resetDemoData: () => Promise<void>;
   budgetLimits: BudgetLimits;
   setBudgetLimits: (limits: BudgetLimits) => Promise<void>;
   selectedMonth: string;
@@ -138,14 +135,6 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
         const created = await api.create({ amount, category, note, spent_at });
         setTransactions((prev) => [created, ...prev]);
         invalidateStats();
-      },
-      resetDemoData: async () => {
-        await api.removeAll();
-        await api.createMany(
-          generateDemoTransactions().map(({ amount, category, note, spent_at }) => ({ amount, category, note, spent_at })),
-        );
-        await budgetsApi.replace(BUDGET_LIMITS);
-        await reload();
       },
       budgetLimits,
       setBudgetLimits: async (limits) => {
