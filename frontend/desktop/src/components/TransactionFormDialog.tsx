@@ -100,11 +100,21 @@ export function TransactionFormDialog() {
           <Dialog.Description className="sr-only">Форма транзакції</Dialog.Description>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="segmented w-full [&>button]:flex-1">
-              <button type="button" data-active={kind === "expense"} onClick={() => setKind("expense")}>
+            <div className="segmented w-full [&>button]:flex-1" role="group" aria-label="Тип транзакції">
+              <button
+                type="button"
+                data-active={kind === "expense"}
+                aria-pressed={kind === "expense"}
+                onClick={() => setKind("expense")}
+              >
                 Витрата
               </button>
-              <button type="button" data-active={kind === "income"} onClick={() => setKind("income")}>
+              <button
+                type="button"
+                data-active={kind === "income"}
+                aria-pressed={kind === "income"}
+                onClick={() => setKind("income")}
+              >
                 Дохід
               </button>
             </div>

@@ -56,15 +56,20 @@ export function TransactionsPage() {
       <div className="card mb-5 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-52 flex-1">
+            <label htmlFor="tx-search" className="sr-only">
+              Пошук за нотаткою
+            </label>
             <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
             <input
+              id="tx-search"
+              type="search"
               value={search}
               onChange={(e) => updateParam("q", e.target.value)}
               placeholder="Пошук за нотаткою…"
               className="input pl-10"
             />
           </div>
-          <div className="segmented">
+          <div className="segmented" role="group" aria-label="Тип транзакцій">
             {(
               [
                 ["all", "Усі"],
@@ -72,12 +77,21 @@ export function TransactionsPage() {
                 ["income", "Доходи"],
               ] as const
             ).map(([value, label]) => (
-              <button key={value} data-active={type === value} onClick={() => updateParam("type", value)}>
+              <button
+                key={value}
+                data-active={type === value}
+                aria-pressed={type === value}
+                onClick={() => updateParam("type", value)}
+              >
                 {label}
               </button>
             ))}
           </div>
+          <label htmlFor="tx-category" className="sr-only">
+            Категорія
+          </label>
           <select
+            id="tx-category"
             value={category}
             onChange={(e) => updateParam("category", e.target.value)}
             className="input w-44"
@@ -89,11 +103,11 @@ export function TransactionsPage() {
               </option>
             ))}
           </select>
-          <div className="segmented">
-            <button data-active={!allTime} onClick={() => updateParam("period", null)}>
+          <div className="segmented" role="group" aria-label="Період">
+            <button data-active={!allTime} aria-pressed={!allTime} onClick={() => updateParam("period", null)}>
               Місяць
             </button>
-            <button data-active={allTime} onClick={() => updateParam("period", "all")}>
+            <button data-active={allTime} aria-pressed={allTime} onClick={() => updateParam("period", "all")}>
               Увесь час
             </button>
           </div>

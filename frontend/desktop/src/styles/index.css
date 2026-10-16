@@ -100,6 +100,11 @@
   .label {
     @apply mb-1.5 block text-xs font-medium text-muted;
   }
+  /* Фокус-ring лише для клавіатури: раніше його мали тільки поля вводу,
+     тому кнопки й посилання були невидимі при навігації з Tab. */
+  :where(button, a, select, [tabindex]):focus-visible {
+    @apply outline-none ring-4 ring-olive-tint;
+  }
   .segmented {
     @apply inline-flex rounded-xl bg-milk-deep p-1;
   }

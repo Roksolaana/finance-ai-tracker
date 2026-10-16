@@ -96,5 +96,3 @@ export function generateDemoTransactions(monthsBack = 6, today = new Date()): Tr
 
   return result.sort((a, b) => b.spent_at.localeCompare(a.spent_at));
 }
-
-export const demoTransactions: Transaction[] = generateDemoTransactions();

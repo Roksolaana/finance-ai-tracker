@@ -5,7 +5,11 @@ export function Toasts() {
   const { toasts, dismissToast } = useUi();
 
   return (
-    <div className="pointer-events-none fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2">
+    <div
+      role="status"
+      aria-live="polite"
+      className="pointer-events-none fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2"
+    >
       {toasts.map((toast) => (
         <div
           key={toast.id}
