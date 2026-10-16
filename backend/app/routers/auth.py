@@ -1,6 +1,7 @@
 """Реєстрація, вхід та дані поточного акаунта."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +30,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
     user = User(
         email=payload.email,
-        password_hash=hash_password(payload.password),
+        password_hash=await run_in_threadpool(hash_password, payload.password),
         display_name=payload.display_name,
     )
     db.add(user)
@@ -58,7 +59,11 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> Au
     user = (await db.execute(select(User).where(User.email == payload.email))).scalar_one_or_none()
     # Однаковий текст для невідомого email і невірного пароля, щоб не
     # підказувати, які акаунти існують.
-    if user is None or not verify_password(payload.password, user.password_hash):
+    # bcrypt навмисно повільний (~250 мс), тому рахуємо його в потоці.
+    password_ok = user is not None and await run_in_threadpool(
+        verify_password, payload.password, user.password_hash
+    )
+    if not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Невірний email або пароль",

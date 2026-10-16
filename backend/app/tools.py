@@ -13,16 +13,15 @@
 import datetime
 import uuid
 from dataclasses import dataclass
-from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import CATEGORIES
 from app.models import Transaction
 from app.search import semantic_search
-from app.timeutils import local_midnight, local_today
+from app.timeutils import TZ, local_midnight, local_today
 
 ToolKind = Literal["sql", "rag", "hybrid"]
 
@@ -73,7 +72,9 @@ def _describe(transaction: Transaction) -> dict[str, Any]:
     return {
         "amount": float(transaction.amount),
         "category": transaction.category,
-        "date": transaction.spent_at.date().isoformat(),
+        # Місцева доба, а не UTC: інакше покупка о 00:30 показувалась би
+        # учорашнім числом і суперечила статистиці.
+        "date": transaction.spent_at.astimezone(TZ).date().isoformat(),
         "note": transaction.note,
     }
 
@@ -110,10 +111,13 @@ async def query_transactions(
         return ToolOutcome("sql", {"count": int(total)}, [])
 
     if aggregation == "by_category":
+        # Розподіл будуємо за витратами. Якщо модель попросила доходи,
+        # повторний amount<0 дав би завжди порожній список.
+        sign = Transaction.amount > 0 if tx_type == "income" else Transaction.amount < 0
         rows = (
             await db.execute(
                 select(Transaction.category, func.sum(func.abs(Transaction.amount)))
-                .where(*conditions, Transaction.amount < 0)
+                .where(*conditions, sign)
                 .group_by(Transaction.category)
                 .order_by(func.sum(func.abs(Transaction.amount)).desc())
             )
@@ -130,19 +134,34 @@ async def query_transactions(
             shown["note"] = f"показано перші {LIST_LIMIT} записів"
         return ToolOutcome("sql", shown, list(rows))
 
-    # sum — за замовчуванням
+    # sum — за замовчуванням.
+    #
+    # Витрати й доходи повертаються окремо, а не одним числом. Раніше тут була
+    # сума модулів: якщо модель не вказувала tx_type, за вересень виходило
+    # 36 637 ₴ — це 11 037 ₴ витрат, складені з 25 600 ₴ доходу. Саме такі
+    # числа мав виключити принцип «рахує база, а не модель».
     row = (
         await db.execute(
             select(
-                func.coalesce(func.sum(func.abs(Transaction.amount)), 0),
+                func.coalesce(func.sum(case((Transaction.amount < 0, -Transaction.amount), else_=0)), 0),
+                func.coalesce(func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)), 0),
                 func.count(Transaction.id),
             ).where(*conditions)
         )
     ).one()
-    # Кількість беремо окремим COUNT, а не з довжини вибірки: та обмежена
-    # LIST_LIMIT, і модель повідомляла б «сума X по 50 записах» навіть коли
-    # записів насправді сотні.
-    return ToolOutcome("sql", {"total": float(row[0]), "count": int(row[1])}, list(rows))
+    expenses, income, count = float(row[0]), float(row[1]), int(row[2])
+    return ToolOutcome(
+        "sql",
+        {
+            "expenses": expenses,
+            "income": income,
+            "net": income - expenses,
+            # Кількість — окремий COUNT, а не довжина вибірки: та обмежена
+            # LIST_LIMIT, і модель казала б «по 50 записах» замість «по 492».
+            "count": count,
+        },
+        list(rows),
+    )
 
 
 async def semantic_search_notes(
@@ -190,13 +209,20 @@ async def hybrid_search_and_sum(
         )
     ).one()
 
-    matched = [h.transaction for h in hits]
+    # Перелік фільтруємо тим самим періодом, що й суму: інакше під підсумком
+    # за вересень показувались би записи з усіх місяців.
+    kept = set(
+        (
+            await db.execute(select(Transaction.id).where(*conditions))
+        ).scalars().all()
+    )
+    matched = [h.transaction for h in hits if h.transaction.id in kept]
     return ToolOutcome(
         "hybrid",
         {
             "total": float(row[0]),
             "count": int(row[1]),
-            "matched_notes": sorted({h.transaction.note for h in hits if h.transaction.note}),
+            "matched_notes": sorted({t.note for t in matched if t.note}),
         },
         matched,
     )
@@ -231,7 +257,11 @@ def tool_schemas() -> list[dict[str, Any]]:
                         "aggregation": {
                             "type": "string",
                             "enum": ["sum", "count", "list", "by_category"],
-                            "description": "sum — сума, count — кількість, list — перелік, by_category — розподіл витрат",
+                            "description": (
+                                "sum — витрати, доходи й різниця окремими числами; "
+                                "count — кількість; list — перелік; "
+                                "by_category — розподіл витрат за категоріями"
+                            ),
                         },
                         "category": {"type": ["string", "null"], "enum": [*CATEGORIES, None]},
                         "tx_type": {"type": ["string", "null"], "enum": ["income", "expense", None]},
@@ -316,8 +346,8 @@ def system_prompt() -> str:
         "нотатки в базі українські.\n"
         "- `category` вибирай лише зі списку дозволених значень. Якщо потрібної "
         "категорії немає, не вказуй її зовсім.\n"
-        "- Суми в базі: витрати відʼємні, доходи додатні. Інструменти вже "
-        "повертають витрати за модулем.\n"
+        "- `sum` повертає витрати, доходи й різницю окремо. Бери те число, про "
+        "яке питає користувач, і не складай їх між собою.\n"
         "- Грошові суми пиши у форматі «1 234 ₴».\n"
         "- Пиши звичайним текстом без розмітки: ніяких зірочок, решіток і "
         "маркованих списків — інтерфейс показує відповідь як є."

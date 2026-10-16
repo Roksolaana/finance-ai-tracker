@@ -67,8 +67,12 @@ async def chat(
         return _response(first.get("content") or "", None, [], started)
 
     messages.append(first)
+    # Модель може зробити кілька викликів за раз. Запамʼятовуємо перший
+    # успішний: раніше зберігався лише останній, і якщо він падав, інтерфейс
+    # показував назву одного інструмента поруч із записами від іншого.
     outcome: ToolOutcome | None = None
-    tool_name = ""
+    outcome_tool = ""
+    seen_transactions: list = []
 
     for call in calls:
         tool_name = call["function"]["name"]
@@ -81,8 +85,11 @@ async def chat(
             except json.JSONDecodeError:
                 arguments = {}
             try:
-                outcome = await handler(db, user.id, **arguments)
-                result = outcome.payload
+                current = await handler(db, user.id, **arguments)
+                result = current.payload
+                if outcome is None:
+                    outcome, outcome_tool = current, tool_name
+                seen_transactions.extend(current.transactions)
             except ToolArgumentError as exc:
                 # Зрозуміла проблема з аргументом — текст піде моделі, і вона
                 # пояснить користувачу, що саме не так.
@@ -109,8 +116,8 @@ async def chat(
 
     return _response(
         final.get("content") or "",
-        (tool_name, outcome.kind) if outcome else None,
-        outcome.transactions if outcome else [],
+        (outcome_tool, outcome.kind) if outcome else None,
+        seen_transactions,
         started,
     )
 

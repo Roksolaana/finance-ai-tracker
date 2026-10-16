@@ -8,6 +8,7 @@
 import uuid
 from dataclasses import dataclass
 
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,7 +42,9 @@ async def semantic_search(
     Нерелевантні відсікаються за порогом: без нього пошук завжди повертав би
     `top_k` записів, навіть коли в даних немає нічого схожого.
     """
-    vector = embed_one(query_text)
+    # Модель ембедингів синхронна й важка: без відведення в потік вона
+    # блокує весь сервер, включно зі статикою та /health.
+    vector = await run_in_threadpool(embed_one, query_text)
     if vector is None:
         return []
 
