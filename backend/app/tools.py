@@ -26,6 +26,13 @@ from app.timeutils import local_midnight, local_today
 
 ToolKind = Literal["sql", "rag", "hybrid"]
 
+# Скільки записів максимум віддаємо моделі в перелік.
+LIST_LIMIT = 50
+
+
+class ToolArgumentError(ValueError):
+    """Аргумент від моделі не можна використати; текст піде їй у відповідь."""
+
 
 @dataclass
 class ToolOutcome:
@@ -39,11 +46,27 @@ class ToolOutcome:
 def _date_bounds(date_from: str | None, date_to: str | None):
     conditions = []
     if date_from:
-        conditions.append(Transaction.spent_at >= local_midnight(datetime.date.fromisoformat(date_from)))
+        conditions.append(Transaction.spent_at >= local_midnight(_parse_date(date_from)))
     if date_to:
-        end = datetime.date.fromisoformat(date_to) + datetime.timedelta(days=1)
+        end = _parse_date(date_to) + datetime.timedelta(days=1)
         conditions.append(Transaction.spent_at < local_midnight(end))
     return conditions
+
+
+def _parse_date(value: str) -> datetime.date:
+    """Розбирає дату від моделі.
+
+    Модель не завжди дотримується формату з опису: трапляються «01.09.2026»,
+    назва місяця або неіснуюче «2026-13-45». Мовчки проігнорувати таку дату
+    не можна — користувач отримав би суму за весь час замість запитаного
+    періоду, тож кидаємо зрозумілу помилку, яку модель пояснить словами.
+    """
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError:
+        raise ToolArgumentError(
+            f"Не вдалося розібрати дату «{value}». Потрібен формат YYYY-MM-DD."
+        ) from None
 
 
 def _describe(transaction: Transaction) -> dict[str, Any]:
@@ -98,24 +121,37 @@ async def query_transactions(
         return ToolOutcome("sql", {"by_category": [{"category": c, "amount": float(a)} for c, a in rows]}, [])
 
     rows = (
-        await db.execute(select(Transaction).where(*conditions).order_by(Transaction.spent_at.desc()).limit(50))
+        await db.execute(select(Transaction).where(*conditions).order_by(Transaction.spent_at.desc()).limit(LIST_LIMIT))
     ).scalars().all()
 
     if aggregation == "list":
-        return ToolOutcome("sql", {"transactions": [_describe(t) for t in rows]}, list(rows))
+        shown = {"transactions": [_describe(t) for t in rows]}
+        if len(rows) == LIST_LIMIT:
+            shown["note"] = f"показано перші {LIST_LIMIT} записів"
+        return ToolOutcome("sql", shown, list(rows))
 
     # sum — за замовчуванням
-    total = (
-        await db.execute(select(func.coalesce(func.sum(func.abs(Transaction.amount)), 0)).where(*conditions))
-    ).scalar_one()
-    return ToolOutcome("sql", {"total": float(total), "count": len(rows)}, list(rows))
+    row = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(func.abs(Transaction.amount)), 0),
+                func.count(Transaction.id),
+            ).where(*conditions)
+        )
+    ).one()
+    # Кількість беремо окремим COUNT, а не з довжини вибірки: та обмежена
+    # LIST_LIMIT, і модель повідомляла б «сума X по 50 записах» навіть коли
+    # записів насправді сотні.
+    return ToolOutcome("sql", {"total": float(row[0]), "count": int(row[1])}, list(rows))
 
 
 async def semantic_search_notes(
     db: AsyncSession, user_id: uuid.UUID, query_text: str, top_k: int | None = 20
 ) -> ToolOutcome:
     """Пошук за змістом нотатки."""
-    hits = await semantic_search(db, user_id, query_text, top_k=top_k or 20)
+    # Модель інколи надсилає 0 або відʼємне значення, а SQL LIMIT такого не приймає.
+    limit = min(max(top_k or 20, 1), 100)
+    hits = await semantic_search(db, user_id, query_text, top_k=limit)
     return ToolOutcome(
         "rag",
         {

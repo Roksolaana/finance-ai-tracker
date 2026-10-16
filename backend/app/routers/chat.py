@@ -23,7 +23,7 @@ from app.database import get_db
 from app.llm import LLMUnavailable, chat_completion, is_configured
 from app.models import User
 from app.schemas import ChatRequest, ChatResponse
-from app.tools import HANDLERS, ToolOutcome, system_prompt, tool_schemas
+from app.tools import HANDLERS, ToolArgumentError, ToolOutcome, system_prompt, tool_schemas
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -83,10 +83,15 @@ async def chat(
             try:
                 outcome = await handler(db, user.id, **arguments)
                 result = outcome.payload
-            except TypeError:
-                # Модель передала аргумент, якого інструмент не знає.
-                logger.exception("Некоректні аргументи для %s: %s", tool_name, arguments)
-                result = {"error": "Некоректні аргументи інструмента"}
+            except ToolArgumentError as exc:
+                # Зрозуміла проблема з аргументом — текст піде моделі, і вона
+                # пояснить користувачу, що саме не так.
+                result = {"error": str(exc)}
+            except Exception:
+                # Будь-яка інша помилка інструмента не має валити весь запит:
+                # модель отримує позначку про збій і відповідає словами.
+                logger.exception("Інструмент %s впав на аргументах %s", tool_name, arguments)
+                result = {"error": "Не вдалося виконати запит до даних"}
 
         messages.append(
             {
