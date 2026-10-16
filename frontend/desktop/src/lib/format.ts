@@ -8,13 +8,28 @@ export const CHART = {
   axis: "#80836F",
 };
 
-export function formatMoney(value: number, { sign = false, decimals = 0 } = {}) {
-  const formatted = Math.abs(value).toLocaleString("uk-UA", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+export function formatMoney(value: number, { sign = false, decimals }: { sign?: boolean; decimals?: number } = {}) {
+  const absolute = Math.abs(value);
+  // Копійки показуємо лише коли вони справді є. Фіксовані 0 знаків
+  // округлювали суми на вигляд, і підсумки розходилися з деталями.
+  const fraction = decimals ?? (Number.isInteger(absolute) ? 0 : 2);
+  const formatted = absolute.toLocaleString("uk-UA", {
+    minimumFractionDigits: fraction,
+    maximumFractionDigits: fraction,
   });
   const prefix = value < 0 ? "−" : sign && value > 0 ? "+" : "";
   return `${prefix}${formatted} ₴`;
+}
+
+/**
+ * Форматує дату-ключ «YYYY-MM-DD» як день і місяць.
+ *
+ * `new Date("2026-10-03")` парситься як UTC-полуніч, тому в поясах західніше
+ * UTC показувало б попередній день — тут дата збирається як локальна.
+ */
+export function formatDayLabel(dayKey: string) {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("uk-UA", { day: "numeric", month: "long" });
 }
 
 export function formatCompact(value: number) {

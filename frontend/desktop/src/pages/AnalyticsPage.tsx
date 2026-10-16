@@ -23,7 +23,7 @@ import {
 import { useTransactions } from "../context/TransactionsContext";
 import { TopBar } from "../components/TopBar";
 import { TransactionRow } from "../components/TransactionList";
-import { CHART, formatCompact, formatMoney, formatMonth, formatMonthShort } from "../lib/format";
+import { CHART, formatCompact, formatDayLabel, formatMoney, formatMonth, formatMonthShort } from "../lib/format";
 
 const tooltipStyle = { borderRadius: 12, border: "1px solid #E7E3D4", fontSize: 12 };
 
@@ -125,7 +125,7 @@ export function AnalyticsPage() {
           <Insight
             icon={CalendarDays}
             label="Найдорожчий день"
-            value={peak ? new Date(peak.date).toLocaleDateString("uk-UA", { day: "numeric", month: "long" }) : "—"}
+            value={peak ? formatDayLabel(peak.date) : "—"}
             hint={peak ? formatMoney(peak.expense) : "немає витрат"}
           />
           <Insight

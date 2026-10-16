@@ -58,10 +58,17 @@ export function DashboardPage() {
           <p className="mt-1 max-w-sm text-sm text-muted">
             Додайте першу витрату чи дохід — статистика й графіки з'являться автоматично.
           </p>
-          <button onClick={openAddForm} className="btn-primary mt-6">
-            <Plus size={17} />
-            Додати транзакцію
-          </button>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            <button onClick={openAddForm} className="btn-primary">
+              <Plus size={17} />
+              Додати транзакцію
+            </button>
+            {/* Інакше в порожньому місяці діалог лімітів недосяжний:
+                його кнопка живе в картці бюджетів, якої тут немає. */}
+            <button onClick={() => setBudgetsOpen(true)} className="btn-ghost">
+              Налаштувати ліміти
+            </button>
+          </div>
         </div>
       ) : (
         <div className="space-y-5">
@@ -80,7 +87,9 @@ export function DashboardPage() {
                 <span className="chip bg-white/15 text-white">
                   {stats.balance >= 0 ? "Заощаджено" : "Перевитрата"} {formatMoney(Math.abs(stats.balance))}
                 </span>
-                {stats.total_income > 0 && (
+                {/* Лише при додатній нормі: при перевитраті вийшло б
+                    безглузде «−25% доходу збережено». */}
+                {stats.savings_rate > 0 && (
                   <span className="chip bg-white/15 text-white">
                     {Math.round(stats.savings_rate * 100)}% доходу збережено
                   </span>
