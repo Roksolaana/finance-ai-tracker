@@ -10,6 +10,7 @@
 """
 
 import json
+import re
 import logging
 import time
 import uuid
@@ -122,7 +123,29 @@ async def chat(
     )
 
 
+_BOLD = re.compile(r"\*{1,3}(.+?)\*{1,3}", re.DOTALL)
+_UNDERLINE = re.compile(r"__(.+?)__", re.DOTALL)
+_BULLET = re.compile(r"^[ \t]*[-*+•]\s+", re.MULTILINE)
+_HEADING = re.compile(r"^[ \t]*#{1,6}\s*", re.MULTILINE)
+_BLANKS = re.compile(r"\n{3,}")
+
+
+def _plain_text(content: str) -> str:
+    """Прибирає markdown із відповіді моделі.
+
+    Інтерфейс показує текст як є, тож зірочки й решітки видно користувачу.
+    Промпт просить писати без розмітки, але модель періодично її вставляє —
+    покладатися лише на прохання не можна.
+    """
+    content = _BOLD.sub(r"\1", content)
+    content = _UNDERLINE.sub(r"\1", content)
+    content = _HEADING.sub("", content)
+    content = _BULLET.sub("• ", content)
+    return _BLANKS.sub("\n\n", content).strip()
+
+
 def _response(content: str, tool: tuple[str, str] | None, transactions: list, started: float) -> ChatResponse:
+    content = _plain_text(content)
     duration_ms = int((time.perf_counter() - started) * 1000)
     # Та сама нотатка трапляється в кількох транзакціях; для показу досить
     # перших, але порахована сума стосується всіх знайдених.

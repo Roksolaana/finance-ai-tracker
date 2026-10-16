@@ -69,8 +69,12 @@ def _parse_date(value: str) -> datetime.date:
 
 
 def _describe(transaction: Transaction) -> dict[str, Any]:
+    amount = float(transaction.amount)
     return {
-        "amount": float(transaction.amount),
+        # Модуль і окрема позначка типу: зі знаком модель переписувала суму в
+        # відповідь як «-1 404 ₴», хоча користувачу показують витрату.
+        "amount": abs(amount),
+        "kind": "дохід" if amount > 0 else "витрата",
         "category": transaction.category,
         # Місцева доба, а не UTC: інакше покупка о 00:30 показувалась би
         # учорашнім числом і суперечила статистиці.
@@ -150,18 +154,98 @@ async def query_transactions(
         )
     ).one()
     expenses, income, count = float(row[0]), float(row[1]), int(row[2])
-    return ToolOutcome(
-        "sql",
-        {
-            "expenses": expenses,
-            "income": income,
-            "net": income - expenses,
-            # Кількість — окремий COUNT, а не довжина вибірки: та обмежена
-            # LIST_LIMIT, і модель казала б «по 50 записах» замість «по 492».
-            "count": count,
-        },
-        list(rows),
-    )
+
+    payload: dict[str, Any] = {
+        "expenses": expenses,
+        "income": income,
+        "net": income - expenses,
+        # Кількість — окремий COUNT, а не довжина вибірки: та обмежена
+        # LIST_LIMIT, і модель казала б «по 50 записах» замість «по 492».
+        "count": count,
+    }
+
+    # Контекст для відповіді. Без нього модель може сказати лише голе число,
+    # а користувачу потрібно розуміти, з чого воно складається і чи це багато.
+    payload["top_categories"] = await _top_categories(db, conditions)
+    days = _period_days(date_from, date_to)
+    if days and expenses:
+        payload["days_in_period"] = days
+        payload["average_per_day"] = round(expenses / days, 2)
+    previous = await _previous_period(db, user_id, date_from, date_to, category, tx_type)
+    if previous is not None:
+        payload["previous_period"] = previous
+
+    return ToolOutcome("sql", payload, list(rows))
+
+
+async def _top_categories(db: AsyncSession, conditions: list, limit: int = 5) -> list[dict[str, Any]]:
+    """Найбільші категорії витрат — щоб було чим пояснити суму."""
+    rows = (
+        await db.execute(
+            select(Transaction.category, func.sum(func.abs(Transaction.amount)))
+            .where(*conditions, Transaction.amount < 0)
+            .group_by(Transaction.category)
+            .order_by(func.sum(func.abs(Transaction.amount)).desc())
+            .limit(limit)
+        )
+    ).all()
+    return [{"category": c, "amount": float(a)} for c, a in rows]
+
+
+def _period_days(date_from: str | None, date_to: str | None) -> int | None:
+    if not date_from or not date_to:
+        return None
+    days = (_parse_date(date_to) - _parse_date(date_from)).days + 1
+    return days if days > 0 else None
+
+
+async def _previous_period(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    date_from: str | None,
+    date_to: str | None,
+    category: str | None,
+    tx_type: str | None,
+) -> dict[str, float] | None:
+    """Той самий за довжиною відрізок перед запитаним — для порівняння.
+
+    Фраза «на 4% більше, ніж місяцем раніше» робить число зрозумілим, а
+    рахувати його має база, а не модель.
+    """
+    days = _period_days(date_from, date_to)
+    if not days:
+        return None
+
+    start = _parse_date(date_from)  # type: ignore[arg-type]
+    previous_end = start - datetime.timedelta(days=1)
+    previous_start = previous_end - datetime.timedelta(days=days - 1)
+
+    conditions = [
+        Transaction.user_id == user_id,
+        Transaction.spent_at >= local_midnight(previous_start),
+        Transaction.spent_at < local_midnight(previous_end + datetime.timedelta(days=1)),
+    ]
+    if category:
+        conditions.append(Transaction.category == category)
+    if tx_type == "income":
+        conditions.append(Transaction.amount > 0)
+    elif tx_type == "expense":
+        conditions.append(Transaction.amount < 0)
+
+    row = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(case((Transaction.amount < 0, -Transaction.amount), else_=0)), 0),
+                func.coalesce(func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)), 0),
+            ).where(*conditions)
+        )
+    ).one()
+    return {
+        "from": previous_start.isoformat(),
+        "to": previous_end.isoformat(),
+        "expenses": float(row[0]),
+        "income": float(row[1]),
+    }
 
 
 async def semantic_search_notes(
@@ -223,6 +307,11 @@ async def hybrid_search_and_sum(
             "total": float(row[0]),
             "count": int(row[1]),
             "matched_notes": sorted({t.note for t in matched if t.note}),
+            # Кілька найбільших — щоб у відповіді були приклади, а не лише сума.
+            "largest": [
+                _describe(t)
+                for t in sorted(matched, key=lambda t: abs(float(t.amount)), reverse=True)[:5]
+            ],
         },
         matched,
     )
@@ -334,13 +423,33 @@ HANDLERS = {
 def system_prompt() -> str:
     today = local_today()
     return (
-        "Ти фінансовий асистент застосунку Крона. Відповідай українською, стисло, "
-        "по суті, без переліку кроків.\n"
+        "Ти фінансовий асистент застосунку Крона. Відповідай українською, "
+        "звертайся на «ви».\n"
         f"Сьогодні {today.isoformat()}.\n"
         "\n"
+        "Як будувати відповідь:\n"
+        "- Починай з прямої відповіді на питання — число або висновок у першому "
+        "реченні.\n"
+        "- Далі поясни, з чого це складається: найбільші категорії, помітні "
+        "витрати, середнє за день — те, що повернув інструмент.\n"
+        "- Порівнюй з попереднім періодом ЛИШЕ якщо в результаті є поле "
+        "previous_period. Немає його — не згадуй попередній період узагалі.\n"
+        "- Коли перелічуєш записи, давай суму, категорію й дату, а не лише "
+        "нотатку.\n"
+        "- Три-чотири речення або короткий перелік з нового рядка. Не одне "
+        "голе число, але й не стіна тексту.\n"
+        "- Пиши живою мовою, без канцеляриту й без переліку своїх кроків: "
+        "користувачу байдуже, який інструмент ти викликав.\n"
+        "\n"
         "Правила:\n"
-        "- Числа бери лише з результатів інструментів. Якщо інструмент нічого не "
-        "повернув — так і скажи, не вигадуй суми.\n"
+        "- КОЖНЕ число у відповіді мусить бути в результаті інструмента. Не "
+        "рахуй сам середні, відсотки чи різниці, яких там немає, і не "
+        "вигадуй сум за попередні періоди. Краще коротша відповідь, ніж "
+        "правдоподібне число, узяте зі стелі.\n"
+        "- Якщо інструмент нічого не повернув — так і скажи.\n"
+        "- Не роби припущень про те, чого в даних не видно. Категорія «кафе» "
+        "містить і каву, і ресторани; не стверджуй, із чого саме складається "
+        "сума, якщо інструмент не дав розбивки.\n"
         "- `query_text` пиши українською, словами користувача, повною фразою з "
         "кількох слів. Одне слово шукає погано. Не перекладай англійською: "
         "нотатки в базі українські.\n"
@@ -348,7 +457,7 @@ def system_prompt() -> str:
         "категорії немає, не вказуй її зовсім.\n"
         "- `sum` повертає витрати, доходи й різницю окремо. Бери те число, про "
         "яке питає користувач, і не складай їх між собою.\n"
-        "- Грошові суми пиши у форматі «1 234 ₴».\n"
-        "- Пиши звичайним текстом без розмітки: ніяких зірочок, решіток і "
-        "маркованих списків — інтерфейс показує відповідь як є."
+        "- Грошові суми пиши у форматі «1 234 ₴», без копійок, якщо вони нульові.\n"
+        "- Без розмітки: ніяких зірочок, решіток і дефісів-маркерів — інтерфейс "
+        "показує текст як є. Для переліку просто починай з нового рядка."
     )

@@ -143,8 +143,8 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
             <div
               className={
                 message.role === "user"
-                  ? "max-w-[92%] rounded-2xl rounded-br-md bg-olive px-4 py-2.5 text-sm leading-relaxed text-white"
-                  : "max-w-[92%] rounded-2xl rounded-bl-md bg-surface-soft px-4 py-3 text-sm leading-relaxed text-ink-soft ring-1 ring-line-soft"
+                  ? "max-w-[92%] whitespace-pre-line rounded-2xl rounded-br-md bg-olive px-4 py-2.5 text-sm leading-relaxed text-white"
+                  : "max-w-[92%] whitespace-pre-line rounded-2xl rounded-bl-md bg-surface-soft px-4 py-3 text-sm leading-relaxed text-ink-soft ring-1 ring-line-soft"
               }
             >
               {message.content}
