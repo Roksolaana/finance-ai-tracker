@@ -1,7 +1,13 @@
 """Конфігурація підключення до PostgreSQL (async)."""
 
+from pathlib import Path
+
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine, AsyncSession
 from pydantic_settings import BaseSettings
+
+# Абсолютний шлях: відносний "." прив'язаний до робочої теки, тому запуск
+# uvicorn з кореня репозиторію молча брав дефолтний порт 5432 замість 5433.
+ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
 
 class Settings(BaseSettings):
@@ -20,7 +26,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "dev-only-insecure-change-me"
     JWT_TTL_HOURS: int = 24 * 30
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    model_config = {"env_file": ENV_FILE, "extra": "ignore"}
 
 
 settings = Settings()

@@ -24,6 +24,7 @@ export function TransactionFormDialog() {
   const [date, setDate] = useState(dayKey(new Date()));
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!form) return;
@@ -45,6 +46,8 @@ export function TransactionFormDialog() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Без цього подвійний клік створював два однакові записи.
+    if (saving) return;
     const parsed = Number(amount.replace(",", "."));
     if (!amount || Number.isNaN(parsed) || parsed <= 0) {
       setError("Вкажіть суму більшу за нуль");
@@ -62,6 +65,7 @@ export function TransactionFormDialog() {
       spent_at: combineDateWithTime(date, editing ? new Date(editing.spent_at) : new Date()),
     };
 
+    setSaving(true);
     try {
       if (editing) {
         await updateTransaction(editing.id, input);
@@ -73,6 +77,8 @@ export function TransactionFormDialog() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося зберегти");
       return;
+    } finally {
+      setSaving(false);
     }
     setSelectedMonth(monthKey(input.spent_at));
     closeForm();
@@ -183,8 +189,8 @@ export function TransactionFormDialog() {
               <button type="button" onClick={closeForm} className="btn-ghost">
                 Скасувати
               </button>
-              <button type="submit" className="btn-primary min-w-32">
-                {editing ? "Зберегти" : "Додати"}
+              <button type="submit" disabled={saving} className="btn-primary min-w-32 disabled:opacity-60">
+                {saving ? "Збереження…" : editing ? "Зберегти" : "Додати"}
               </button>
             </div>
           </form>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { ChartPie, LayoutDashboard, LogOut, ReceiptText, RotateCcw, Sprout } from "lucide-react";
 import { useTransactions } from "../context/TransactionsContext";
@@ -14,6 +15,7 @@ export function Sidebar() {
   const { resetDemoData } = useTransactions();
   const { showToast } = useUi();
   const { user, logout } = useAuth();
+  const [resetting, setResetting] = useState(false);
 
   // Перші літери імені: «Марія Коваль» → «МК», одне слово → одна літера.
   const initials = (user?.display_name ?? "")
@@ -53,19 +55,25 @@ export function Sidebar() {
       </nav>
 
       <button
+        disabled={resetting}
         onClick={async () => {
           if (!window.confirm("Видалити всі транзакції та заповнити базу демо-даними?")) return;
+          // Операція довга (видалення + ~250 вставок), тому кнопка блокується:
+          // повторний клік запускав би паралельне очищення.
+          setResetting(true);
           try {
             await resetDemoData();
             showToast("Демо-дані завантажено");
           } catch (err) {
             showToast(err instanceof Error ? err.message : "Не вдалося скинути дані");
+          } finally {
+            setResetting(false);
           }
         }}
-        className="mb-4 flex h-10 items-center gap-2.5 rounded-xl px-3 text-xs font-medium text-muted transition-colors hover:bg-milk-deep hover:text-ink"
+        className="mb-4 flex h-10 items-center gap-2.5 rounded-xl px-3 text-xs font-medium text-muted transition-colors hover:bg-milk-deep hover:text-ink disabled:pointer-events-none disabled:opacity-50"
       >
-        <RotateCcw size={15} />
-        Скинути демо-дані
+        <RotateCcw size={15} className={resetting ? "animate-spin" : undefined} />
+        {resetting ? "Завантаження…" : "Скинути демо-дані"}
       </button>
 
       <div className="flex items-center gap-3 rounded-2xl bg-surface p-3 shadow-card">

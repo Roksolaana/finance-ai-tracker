@@ -1,16 +1,21 @@
-"""FastAPI entry point — ініціалізація застосунку та створення таблиць."""
+"""FastAPI entry point — ініціалізація застосунку та міграції схеми."""
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.database import engine
 from app.migrate import upgrade_to_head
 from app.routers import auth, budgets, stats, transactions
+
+logger = logging.getLogger(__name__)
 
 # Збірка десктоп-клієнта (frontend/desktop/dist) — віддається тим самим процесом,
 # щоб фронтенд і бекенд працювали на одному порту.
@@ -20,8 +25,14 @@ FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "desktop" / "
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: довести схему до останньої міграції. Shutdown: закрити пул."""
-    # Alembic синхронний, тому виносимо його в окремий потік.
-    await asyncio.to_thread(upgrade_to_head)
+    try:
+        # Alembic синхронний, тому виносимо його в окремий потік.
+        await asyncio.to_thread(upgrade_to_head)
+    except Exception:
+        # Якщо БД недоступна (не запущений Docker), сервер усе одно піднімаємо:
+        # інтерфейс завантажиться й покаже помилку зʼєднання з кнопкою повтору.
+        # Інакше не віддавався б навіть статичний фронтенд.
+        logger.exception("Не вдалося застосувати міграції — працюємо без бази даних")
     yield
     await engine.dispose()
 
@@ -52,8 +63,19 @@ app.include_router(stats.router, prefix="/api/v1")
 
 @app.get("/health", tags=["system"])
 async def health_check():
-    """Перевірка, що сервер живий."""
-    return {"status": "ok"}
+    """Перевіряє і процес, і доступність БД.
+
+    Без запиту до бази відповідь була б «ok» навіть із вимкненим Docker.
+    """
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "degraded", "database": "unavailable"},
+        )
+    return {"status": "ok", "database": "ok"}
 
 
 if FRONTEND_DIST.is_dir():
