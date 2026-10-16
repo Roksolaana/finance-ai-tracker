@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from app.database import engine
 from app.migrate import upgrade_to_head
-from app.routers import auth, budgets, stats, transactions
+from app.routers import auth, budgets, chat, stats, transactions
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(transactions.router, prefix="/api/v1")
 app.include_router(budgets.router, prefix="/api/v1")
 app.include_router(stats.router, prefix="/api/v1")
+app.include_router(chat.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["system"])

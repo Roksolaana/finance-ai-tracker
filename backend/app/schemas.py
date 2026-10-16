@@ -3,6 +3,7 @@
 import datetime
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -160,6 +161,46 @@ class TransactionList(BaseModel):
     total: int
     page: int
     per_page: int
+
+
+class ChatMessageIn(BaseModel):
+    """Повідомлення з історії діалогу."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(..., max_length=4000)
+
+
+class ChatRequest(BaseModel):
+    """Запит до AI-асистента разом з попереднім контекстом."""
+
+    message: str = Field(..., min_length=1, max_length=1000, examples=["Скільки я витратила на каву цього місяця?"])
+    history: list[ChatMessageIn] = Field(default_factory=list, max_length=20)
+
+
+class ToolCallInfo(BaseModel):
+    """Який інструмент обрала модель — для показу в інтерфейсі та для оцінки."""
+
+    name: str
+    # sql — детерміновані числа, rag — пошук за змістом, hybrid — одне й друге
+    kind: Literal["sql", "rag", "hybrid"]
+    duration_ms: int
+    matched_transaction_ids: list[str] = Field(default_factory=list)
+
+
+class ChatMessageOut(BaseModel):
+    """Відповідь асистента."""
+
+    id: str
+    role: Literal["assistant"]
+    content: str
+    timestamp: datetime.datetime
+    tool_call: ToolCallInfo | None = None
+
+
+class ChatResponse(BaseModel):
+    message: ChatMessageOut
+    # Знайдені транзакції, щоб інтерфейс показав, на чому побудована відповідь.
+    transactions: list[TransactionRead] = Field(default_factory=list)
 
 
 class CategoryBreakdownEntry(BaseModel):

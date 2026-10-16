@@ -11,7 +11,12 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.embeddings import RELEVANCE_THRESHOLD, embed_one
+from app.embeddings import (
+    RELEVANCE_THRESHOLD,
+    SHORT_QUERY_THRESHOLD,
+    SHORT_QUERY_WORDS,
+    embed_one,
+)
 from app.models import Transaction
 
 
@@ -29,7 +34,7 @@ async def semantic_search(
     # («Лате в «Львівській майстерні кави»» — 5 разів), і при малому top_k
     # копії витіснили б інші релевантні нотатки. Відсікає поріг, а не ліміт.
     top_k: int = 50,
-    threshold: float = RELEVANCE_THRESHOLD,
+    threshold: float | None = None,
 ) -> list[SearchHit]:
     """Повертає транзакції, зміст нотаток яких близький до запиту.
 
@@ -39,6 +44,10 @@ async def semantic_search(
     vector = embed_one(query_text)
     if vector is None:
         return []
+
+    if threshold is None:
+        words = len(query_text.split())
+        threshold = SHORT_QUERY_THRESHOLD if words < SHORT_QUERY_WORDS else RELEVANCE_THRESHOLD
 
     # cosine_distance = 1 - cosine_similarity, тож більша схожість = менша відстань.
     distance = Transaction.embedding.cosine_distance(vector)
