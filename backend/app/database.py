@@ -1,5 +1,6 @@
 """Конфігурація підключення до PostgreSQL (async)."""
 
+import secrets
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine, AsyncSession
@@ -21,9 +22,11 @@ class Settings(BaseSettings):
     # добою, інакше витрата о 00:30 потрапила б у попередній день (UTC).
     APP_TIMEZONE: str = "Europe/Kyiv"
 
-    # Ключ для підпису JWT. Значення нижче — лише щоб застосунок запускався
-    # «з коробки»; робочий ключ задається в .env (JWT_SECRET).
-    JWT_SECRET: str = "dev-only-insecure-change-me"
+    # Ключ підпису JWT. Дефолтного значення навмисно немає: зі спільним
+    # відомим ключем будь-хто підписав би токен на чужий user_id, і поділ
+    # даних між акаунтами став би декоративним. Порожній ключ заповнюється
+    # випадковим при старті (див. ensure_jwt_secret нижче).
+    JWT_SECRET: str = ""
     JWT_TTL_HOURS: int = 24 * 30
 
     # LLM для AI-чату. Порожній ключ = чат вимкнений, решта застосунку працює.
@@ -37,6 +40,35 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def ensure_jwt_secret() -> bool:
+    """Гарантує, що ключ підпису існує і він унікальний для цієї установки.
+
+    Якщо ключа немає — генерує випадковий і дописує в `.env`, щоб токени
+    пережили перезапуск. Так застосунок працює одразу після клонування, але
+    спільного «відомого» ключа, яким можна підробити чужий токен, не існує.
+
+    Повертає True, якщо ключ довелося згенерувати.
+    """
+    if settings.JWT_SECRET:
+        return False
+
+    settings.JWT_SECRET = secrets.token_urlsafe(48)
+    try:
+        existing = ENV_FILE.read_text(encoding="utf-8") if ENV_FILE.exists() else ""
+        prefix = "" if existing.endswith("\n") or not existing else "\n"
+        with ENV_FILE.open("a", encoding="utf-8") as handle:
+            handle.write(f"{prefix}\n# Згенеровано автоматично при першому запуску\nJWT_SECRET={settings.JWT_SECRET}\n")
+    except OSError as exc:
+        # Записати не вдалося — працюємо з ключем у памʼяті. Єдиний наслідок:
+        # після перезапуску доведеться увійти знову.
+        raise JwtSecretNotPersisted(str(exc)) from exc
+    return True
+
+
+class JwtSecretNotPersisted(RuntimeError):
+    """Ключ згенеровано, але не збережено — сесії не переживуть перезапуск."""
 
 engine = create_async_engine(
     settings.DATABASE_URL,
