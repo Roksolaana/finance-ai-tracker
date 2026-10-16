@@ -7,3 +7,9 @@ pydantic==2.11.3
 pydantic-settings==2.9.1
 python-dotenv==1.1.0
 alembic==1.15.2
+# База часових зон для zoneinfo — у Windows своєї немає
+tzdata==2026.2
+# Автентифікація: JWT-токени, хешування паролів, валідація email
+pyjwt==2.10.1
+bcrypt==5.0.0
+email-validator==2.3.0

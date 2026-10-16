@@ -11,16 +11,14 @@ import {
   YAxis,
 } from "recharts";
 import { CalendarDays, Crown, Percent, TrendingDown, type LucideIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   CATEGORY_COLORS,
   EXPENSE_CATEGORIES,
-  categoriesByMonth,
-  computeMonthStats,
-  dayKey,
+  WEEKDAY_LABELS,
+  createStatsApi,
   filterByMonth,
-  monthlySummaries,
-  shiftMonth,
-  spendingByWeekday,
+  type MonthlyStats,
 } from "@finance/shared";
 import { useTransactions } from "../context/TransactionsContext";
 import { TopBar } from "../components/TopBar";
@@ -42,22 +40,65 @@ function Insight({ icon: Icon, label, value, hint }: { icon: LucideIcon; label: 
   );
 }
 
-export function AnalyticsPage() {
-  const { transactions, selectedMonth } = useTransactions();
-  const months = Array.from({ length: 6 }, (_, i) => shiftMonth(selectedMonth, i - 5));
+const statsApi = createStatsApi("/api/v1");
+const MONTHS_IN_WINDOW = 6;
 
-  const summaries = monthlySummaries(transactions, months).map((s) => ({ ...s, label: formatMonthShort(s.month) }));
-  const categoryRows = categoriesByMonth(transactions, months).map((r) => ({ ...r, label: formatMonthShort(r.month) }));
+export function AnalyticsPage() {
+  const { transactions, selectedMonth, monthStats, loadError, reload } = useTransactions();
+  const [monthly, setMonthly] = useState<MonthlyStats | null>(null);
+  const [monthlyFailed, setMonthlyFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMonthlyFailed(false);
+    statsApi
+      .monthly(selectedMonth, MONTHS_IN_WINDOW)
+      .then((data) => !cancelled && setMonthly(data))
+      .catch(() => {
+        if (cancelled) return;
+        setMonthly(null);
+        setMonthlyFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMonth, monthStats]);
+
+  if (!monthStats || !monthly) {
+    const failed = monthlyFailed || !!loadError;
+    return (
+      <>
+        <TopBar title="Аналітика" subtitle={`Пів року до ${formatMonth(selectedMonth).toLowerCase()} включно`} />
+        <div className="card flex flex-col items-center px-6 py-16 text-center">
+          {failed ? (
+            <>
+              <p className="text-sm text-muted">Не вдалося завантажити аналітику.</p>
+              <button onClick={reload} className="btn-ghost mt-4">
+                Спробувати знову
+              </button>
+            </>
+          ) : (
+            <p className="text-sm text-muted">Завантаження аналітики…</p>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  const stats = monthStats;
+  const summaries = monthly.summaries.map((s) => ({ ...s, label: formatMonthShort(s.month) }));
+  // Recharts очікує категорії окремими полями рядка, а бекенд віддає їх мапою.
+  const categoryRows = monthly.categories.map((r) => ({ label: formatMonthShort(r.month), ...r.amounts }));
   const usedCategories = EXPENSE_CATEGORIES.filter((c) => categoryRows.some((r) => (r[c] ?? 0) > 0));
 
+  const weekdays = stats.weekday.map((w) => ({ day: WEEKDAY_LABELS[w.weekday - 1], amount: w.amount }));
   const monthTx = filterByMonth(transactions, selectedMonth);
-  const stats = computeMonthStats(transactions, selectedMonth);
-  const weekdays = spendingByWeekday(monthTx);
   const topExpenses = monthTx.filter((t) => t.amount < 0).sort((a, b) => a.amount - b.amount).slice(0, 5);
 
-  const byDay = new Map<string, number>();
-  for (const t of monthTx) if (t.amount < 0) byDay.set(dayKey(t.spent_at), (byDay.get(dayKey(t.spent_at)) ?? 0) + Math.abs(t.amount));
-  const [peakDay, peakAmount] = [...byDay.entries()].sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
+  const peak = stats.cashflow.reduce<{ date: string; expense: number } | null>(
+    (best, point) => (point.expense > (best?.expense ?? 0) ? point : best),
+    null,
+  );
 
   const totalIncome = summaries.reduce((s, m) => s + m.income, 0);
   const totalNet = summaries.reduce((s, m) => s + m.net, 0);
@@ -84,8 +125,8 @@ export function AnalyticsPage() {
           <Insight
             icon={CalendarDays}
             label="Найдорожчий день"
-            value={peakDay ? new Date(peakDay).toLocaleDateString("uk-UA", { day: "numeric", month: "long" }) : "—"}
-            hint={peakDay ? formatMoney(peakAmount) : "немає витрат"}
+            value={peak ? new Date(peak.date).toLocaleDateString("uk-UA", { day: "numeric", month: "long" }) : "—"}
+            hint={peak ? formatMoney(peak.expense) : "немає витрат"}
           />
           <Insight
             icon={Percent}

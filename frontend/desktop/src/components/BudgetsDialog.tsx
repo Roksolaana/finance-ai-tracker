@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { EXPENSE_CATEGORIES, type BudgetLimits, type TransactionCategory } from "@finance/shared";
@@ -11,22 +11,39 @@ export function BudgetsDialog() {
   const { budgetLimits, setBudgetLimits } = useTransactions();
   const [draft, setDraft] = useState<Partial<Record<TransactionCategory, string>>>({});
 
+  // Ліміти в ref, щоб фонове оновлення даних (перезавантаження при фокусі вікна)
+  // не перезаписувало те, що користувач уже набрав у відкритому діалозі.
+  const latestLimits = useRef(budgetLimits);
+  latestLimits.current = budgetLimits;
+
   useEffect(() => {
     if (!budgetsOpen) return;
     const initial: Partial<Record<TransactionCategory, string>> = {};
-    for (const c of EXPENSE_CATEGORIES) initial[c] = budgetLimits[c] ? String(budgetLimits[c]) : "";
+    for (const c of EXPENSE_CATEGORIES) {
+      const limit = latestLimits.current[c];
+      initial[c] = limit ? String(limit) : "";
+    }
     setDraft(initial);
-  }, [budgetsOpen, budgetLimits]);
+  }, [budgetsOpen]);
 
-  const handleSave = () => {
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
     const limits: BudgetLimits = {};
     for (const c of EXPENSE_CATEGORIES) {
       const value = Number(draft[c]);
       if (value > 0) limits[c] = value;
     }
-    setBudgetLimits(limits);
-    setBudgetsOpen(false);
-    showToast("Ліміти оновлено");
+    setSaving(true);
+    try {
+      await setBudgetLimits(limits);
+      setBudgetsOpen(false);
+      showToast("Ліміти оновлено");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Не вдалося зберегти ліміти");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -67,8 +84,8 @@ export function BudgetsDialog() {
             <button onClick={() => setBudgetsOpen(false)} className="btn-ghost">
               Скасувати
             </button>
-            <button onClick={handleSave} className="btn-primary">
-              Зберегти
+            <button onClick={handleSave} disabled={saving} className="btn-primary disabled:opacity-60">
+              {saving ? "Збереження…" : "Зберегти"}
             </button>
           </div>
         </Dialog.Content>

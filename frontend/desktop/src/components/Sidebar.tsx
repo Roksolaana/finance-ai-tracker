@@ -1,6 +1,8 @@
 import { NavLink } from "react-router-dom";
-import { ChartPie, LayoutDashboard, ReceiptText, RotateCcw, Sprout } from "lucide-react";
+import { ChartPie, LayoutDashboard, LogOut, ReceiptText, RotateCcw, Sprout } from "lucide-react";
 import { useTransactions } from "../context/TransactionsContext";
+import { useUi } from "../context/UiContext";
+import { useAuth } from "../context/AuthContext";
 
 const navItems = [
   { to: "/", label: "Огляд", icon: LayoutDashboard },
@@ -10,6 +12,16 @@ const navItems = [
 
 export function Sidebar() {
   const { resetDemoData } = useTransactions();
+  const { showToast } = useUi();
+  const { user, logout } = useAuth();
+
+  // Перші літери імені: «Марія Коваль» → «МК», одне слово → одна літера.
+  const initials = (user?.display_name ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("");
 
   return (
     <aside className="flex w-60 shrink-0 flex-col px-4 py-6">
@@ -41,7 +53,15 @@ export function Sidebar() {
       </nav>
 
       <button
-        onClick={resetDemoData}
+        onClick={async () => {
+          if (!window.confirm("Видалити всі транзакції та заповнити базу демо-даними?")) return;
+          try {
+            await resetDemoData();
+            showToast("Демо-дані завантажено");
+          } catch (err) {
+            showToast(err instanceof Error ? err.message : "Не вдалося скинути дані");
+          }
+        }}
         className="mb-4 flex h-10 items-center gap-2.5 rounded-xl px-3 text-xs font-medium text-muted transition-colors hover:bg-milk-deep hover:text-ink"
       >
         <RotateCcw size={15} />
@@ -49,13 +69,16 @@ export function Sidebar() {
       </button>
 
       <div className="flex items-center gap-3 rounded-2xl bg-surface p-3 shadow-card">
-        <div className="flex size-9 items-center justify-center rounded-xl bg-olive-tint text-xs font-semibold text-olive">
-          РС
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-olive-tint text-xs font-semibold uppercase text-olive">
+          {initials}
         </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium leading-tight">Роксолана</p>
-          <p className="truncate text-xs text-muted">Демо-профіль</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium leading-tight">{user?.display_name}</p>
+          <p className="truncate text-xs text-muted">{user?.email}</p>
         </div>
+        <button onClick={logout} className="btn-icon size-8 shrink-0" title="Вийти" aria-label="Вийти з акаунта">
+          <LogOut size={15} />
+        </button>
       </div>
     </aside>
   );

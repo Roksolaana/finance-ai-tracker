@@ -1,14 +1,6 @@
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowDownRight, ArrowUpRight, ChevronRight, PiggyBank, Plus } from "lucide-react";
-import {
-  comparePeriods,
-  computeMonthStats,
-  filterByMonth,
-  monthKey,
-  shiftMonth,
-  totalBalance,
-  upToDayOfMonth,
-} from "@finance/shared";
+import { filterByMonth } from "@finance/shared";
 import { useTransactions } from "../context/TransactionsContext";
 import { useUi } from "../context/UiContext";
 import { TopBar } from "../components/TopBar";
@@ -20,29 +12,44 @@ import { TransactionList } from "../components/TransactionList";
 import { formatMoney, formatMonth } from "../lib/format";
 
 export function DashboardPage() {
-  const { transactions, selectedMonth, budgetLimits } = useTransactions();
+  const { transactions, selectedMonth, monthStats, loadError, reload } = useTransactions();
   const { openAddForm, setBudgetsOpen } = useUi();
   const navigate = useNavigate();
 
-  // Поточний місяць ще не завершився — порівнюємо з тими ж днями минулого місяця, а не з усім місяцем.
-  const today = new Date();
-  const isCurrentMonth = selectedMonth === monthKey(today);
-  const stats = computeMonthStats(transactions, selectedMonth, budgetLimits);
-  const previous = computeMonthStats(
-    isCurrentMonth ? upToDayOfMonth(transactions, today.getDate()) : transactions,
-    shiftMonth(selectedMonth, -1),
-    budgetLimits,
-  );
-  const changeHint = isCurrentMonth ? `проти 1–${today.getDate()} числа мин. місяця` : "від попереднього місяця";
-  const change = comparePeriods(stats, previous);
   const monthTransactions = filterByMonth(transactions, selectedMonth);
-  const balance = totalBalance(transactions);
+
+  if (!monthStats) {
+    return (
+      <>
+        <TopBar title="Огляд" subtitle={`Ваші фінанси за ${formatMonth(selectedMonth).toLowerCase()}`} />
+        <div className="card flex flex-col items-center px-6 py-16 text-center">
+          {loadError ? (
+            <>
+              <p className="text-sm text-muted">Не вдалося порахувати статистику.</p>
+              <button onClick={reload} className="btn-ghost mt-4">
+                Спробувати знову
+              </button>
+            </>
+          ) : (
+            <p className="text-sm text-muted">Завантаження статистики…</p>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  const stats = monthStats;
+  const change = stats.comparison;
+  // Для незавершеного місяця бекенд порівнює з таким самим відрізком днів.
+  const changeHint = stats.comparison_up_to_day
+    ? `проти 1–${stats.comparison_up_to_day} числа мин. місяця`
+    : "від попереднього місяця";
 
   return (
     <>
       <TopBar title="Огляд" subtitle={`Ваші фінанси за ${formatMonth(selectedMonth).toLowerCase()}`} />
 
-      {monthTransactions.length === 0 ? (
+      {stats.transaction_count === 0 ? (
         <div className="card flex flex-col items-center px-6 py-16 text-center">
           <span className="mb-4 inline-flex size-14 items-center justify-center rounded-2xl bg-olive-tint text-olive">
             <PiggyBank size={26} />
@@ -67,7 +74,7 @@ export function DashboardPage() {
               </svg>
               <p className="text-sm text-white/70">Загальний баланс</p>
               <p className="mt-2 font-display text-[34px] font-semibold leading-none tracking-tight">
-                {formatMoney(balance)}
+                {formatMoney(stats.total_balance)}
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-2 text-sm">
                 <span className="chip bg-white/15 text-white">

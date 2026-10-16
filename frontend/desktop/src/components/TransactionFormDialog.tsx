@@ -43,7 +43,7 @@ export function TransactionFormDialog() {
     }
   }, [form, editing]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const parsed = Number(amount.replace(",", "."));
     if (!amount || Number.isNaN(parsed) || parsed <= 0) {
@@ -62,12 +62,17 @@ export function TransactionFormDialog() {
       spent_at: combineDateWithTime(date, editing ? new Date(editing.spent_at) : new Date()),
     };
 
-    if (editing) {
-      updateTransaction(editing.id, input);
-      showToast("Зміни збережено");
-    } else {
-      addTransaction(input);
-      showToast(kind === "income" ? "Дохід додано" : "Витрату додано");
+    try {
+      if (editing) {
+        await updateTransaction(editing.id, input);
+        showToast("Зміни збережено");
+      } else {
+        await addTransaction(input);
+        showToast(kind === "income" ? "Дохід додано" : "Витрату додано");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не вдалося зберегти");
+      return;
     }
     setSelectedMonth(monthKey(input.spent_at));
     closeForm();

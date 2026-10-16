@@ -27,8 +27,10 @@ const ICONS: Record<TransactionCategory, LucideIcon> = {
 };
 
 export function CategoryIcon({ category, size = 36 }: { category: TransactionCategory; size?: number }) {
-  const Icon = ICONS[category];
-  const color = CATEGORY_COLORS[category];
+  // Категорія може прийти з бази незнайомою (запис створено через Swagger або
+  // ще до введення валідації) — тоді показуємо вигляд «інше», а не падаємо.
+  const Icon = ICONS[category] ?? ICONS["інше"];
+  const color = CATEGORY_COLORS[category] ?? CATEGORY_COLORS["інше"];
   return (
     <span
       className="inline-flex shrink-0 items-center justify-center rounded-xl"

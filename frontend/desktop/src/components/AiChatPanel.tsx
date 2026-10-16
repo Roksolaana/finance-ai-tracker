@@ -14,7 +14,6 @@ export function AiChatPanel() {
           </span>
           <div>
             <p className="text-sm font-semibold leading-tight">AI-асистент</p>
-            <p className="text-xs text-muted">SQL + семантичний пошук</p>
           </div>
         </div>
         <button onClick={toggleChat} className="btn-icon size-8" aria-label="Сховати асистента">

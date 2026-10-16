@@ -11,6 +11,15 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://finance_user:finance_pass@localhost:5432/finance_db"
     )
 
+    # Часовий пояс користувача. Статистика групує транзакції за місцевою
+    # добою, інакше витрата о 00:30 потрапила б у попередній день (UTC).
+    APP_TIMEZONE: str = "Europe/Kyiv"
+
+    # Ключ для підпису JWT. Значення нижче — лише щоб застосунок запускався
+    # «з коробки»; робочий ключ задається в .env (JWT_SECRET).
+    JWT_SECRET: str = "dev-only-insecure-change-me"
+    JWT_TTL_HOURS: int = 24 * 30
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

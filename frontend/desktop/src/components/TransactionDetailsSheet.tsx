@@ -18,11 +18,23 @@ export function TransactionDetailsSheet() {
     : [];
   const relatedTotal = related.reduce((s, t) => s + Math.abs(t.amount), 0) + Math.abs(transaction?.amount ?? 0);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!transaction) return;
-    const removed = deleteTransaction(transaction.id);
-    closeDetails();
-    showToast("Транзакцію видалено", removed ? { label: "Повернути", onClick: () => restoreTransaction(removed) } : undefined);
+    try {
+      const removed = await deleteTransaction(transaction.id);
+      closeDetails();
+      showToast(
+        "Транзакцію видалено",
+        removed
+          ? {
+              label: "Повернути",
+              onClick: () => restoreTransaction(removed).catch(() => showToast("Не вдалося повернути транзакцію")),
+            }
+          : undefined,
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Не вдалося видалити");
+    }
   };
 
   return (
