@@ -1,7 +1,7 @@
 """CRUD-ендпоінти для транзакцій."""
 
 import uuid
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -12,6 +12,7 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.models import Transaction, User
 from app.schemas import TransactionCreate, TransactionList, TransactionRead
+from app.timeutils import local_midnight
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -102,8 +103,8 @@ async def list_transactions(
     page: int = Query(1, ge=1, description="Номер сторінки"),
     per_page: int = Query(20, ge=1, le=1000, description="Кількість на сторінці"),
     category: str | None = Query(None, description="Фільтр за категорією"),
-    date_from: date | None = Query(None, description="З цієї дати включно (UTC)"),
-    date_to: date | None = Query(None, description="До цієї дати включно (UTC)"),
+    date_from: date | None = Query(None, description="З цієї дати включно (місцевий час)"),
+    date_to: date | None = Query(None, description="До цієї дати включно (місцевий час)"),
     search: str | None = Query(None, min_length=1, max_length=200, description="Підрядок у нотатці"),
     tx_type: Literal["income", "expense"] | None = Query(
         None, alias="type", description="Лише доходи або лише витрати"
@@ -113,18 +114,17 @@ async def list_transactions(
 ) -> dict:
     """Повертає список транзакцій, відсортований від найновіших.
 
-    Межі `date_from`/`date_to` рахуються за UTC-добою, тож для транзакцій,
-    створених близько півночі за місцевим часом, можлива різниця на день.
+    Межі дат рахуються за місцевою добою (`APP_TIMEZONE`) — так само, як
+    групує статистика.
     """
     # Власник — завжди перша умова: чужі записи не мають бути видимі.
     conditions = [Transaction.user_id == user.id]
     if category:
         conditions.append(Transaction.category == category)
     if date_from:
-        conditions.append(Transaction.spent_at >= datetime.combine(date_from, time.min, tzinfo=timezone.utc))
+        conditions.append(Transaction.spent_at >= local_midnight(date_from))
     if date_to:
-        end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=timezone.utc)
-        conditions.append(Transaction.spent_at < end)
+        conditions.append(Transaction.spent_at < local_midnight(date_to + timedelta(days=1)))
     if search:
         conditions.append(Transaction.note.ilike(f"%{_escape_like(search)}%", escape="\\"))
     if tx_type == "income":

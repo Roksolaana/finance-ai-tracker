@@ -4,24 +4,21 @@
 про «вчора» у своєму часовому поясі, а не в UTC.
 """
 
-from datetime import date, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import Date, case, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
-from app.database import get_db, settings
+from app.database import get_db
 from app.models import Budget, Transaction, User
 from app.schemas import MonthlyStats, MonthStats
+from app.timeutils import TZ, TZ_NAME, local_midnight, local_today
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
 MONTH_PATTERN = r"^\d{4}-(0[1-9]|1[0-2])$"
-
-TZ_NAME = settings.APP_TIMEZONE
-TZ = ZoneInfo(TZ_NAME)
 
 # Сума доходів і сума витрат (витрати беремо за модулем).
 INCOME_SUM = func.coalesce(func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0)), 0)
@@ -33,13 +30,8 @@ LOCAL_DATE = cast(LOCAL_TS, Date)
 LOCAL_MONTH = func.to_char(LOCAL_TS, "YYYY-MM")
 
 
-def _local_midnight(day: date) -> datetime:
-    """Початок місцевої доби як aware-datetime."""
-    return datetime.combine(day, time.min, tzinfo=TZ)
-
-
 def _month_start(year: int, month: int) -> datetime:
-    return _local_midnight(date(year, month, 1))
+    return local_midnight(date(year, month, 1))
 
 
 def _next_month(year: int, month: int) -> tuple[int, int]:
@@ -87,7 +79,7 @@ async def month_stats(
     end = _month_start(*_next_month(year, mon))
     days_in_month = (end.date() - start.date()).days
 
-    today_local = datetime.now(TZ).date()
+    today_local = local_today()
     is_current_month = (today_local.year, today_local.month) == (year, mon)
     # У незавершеному місяці середнє рахуємо на дні, що минули.
     days_elapsed = today_local.day if is_current_month else days_in_month
@@ -101,7 +93,7 @@ async def month_stats(
     prev_end = start
     comparison_up_to_day = None
     if is_current_month:
-        capped = _local_midnight(prev_start.date() + timedelta(days=today_local.day))
+        capped = local_midnight(prev_start.date() + timedelta(days=today_local.day))
         if capped < prev_end:
             prev_end = capped
             comparison_up_to_day = today_local.day

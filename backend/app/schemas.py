@@ -4,9 +4,9 @@ import datetime
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from app.constants import CATEGORIES, EXPENSE_CATEGORIES
+from app.constants import CATEGORIES, EXPENSE_CATEGORIES, INCOME_CATEGORY
 
 # Допуск, щоб трохи спішний годинник клієнта не ламав запис «щойно».
 CLOCK_SKEW = datetime.timedelta(minutes=5)
@@ -121,6 +121,21 @@ class TransactionCreate(BaseModel):
         if value is None:
             return None
         return value.strip() or None
+
+    @model_validator(mode="after")
+    def check_sign_matches_category(self) -> "TransactionCreate":
+        """Знак суми мусить відповідати категорії.
+
+        Статистика рахує додатні суми як дохід, а розподіл по категоріях
+        будує лише з відʼємних. Без цієї перевірки запис «+500, їжа» потрапляв
+        би в доходи, але не в жодну категорію витрат.
+        """
+        is_income_category = self.category == INCOME_CATEGORY
+        if self.amount > 0 and not is_income_category:
+            raise ValueError(f"Додатна сума можлива лише в категорії «{INCOME_CATEGORY}»")
+        if self.amount < 0 and is_income_category:
+            raise ValueError(f"Категорія «{INCOME_CATEGORY}» потребує додатної суми")
+        return self
 
 
 class TransactionRead(BaseModel):
