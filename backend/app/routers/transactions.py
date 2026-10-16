@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,7 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.models import Transaction, User
 from app.schemas import TransactionCreate, TransactionList, TransactionRead
+from app.embeddings import embed_one
 from app.timeutils import local_midnight
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -28,11 +30,10 @@ async def create_transaction(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Transaction:
-    """Створює нову транзакцію витрати.
+    """Створює нову транзакцію.
 
-    Якщо `spent_at` не вказано — підставляє поточний UTC-час.
-    Поле `embedding` поки залишається NULL — буде заповнено
-    на Тижні 3 (RAG-частина).
+    Якщо `spent_at` не вказано — підставляє поточний UTC-час. Для нотатки
+    одразу рахується ембединг, щоб запис був доступний семантичному пошуку.
     """
     transaction = Transaction(
         user_id=user.id,
@@ -40,7 +41,7 @@ async def create_transaction(
         category=payload.category,
         spent_at=payload.spent_at or datetime.now(timezone.utc),
         note=payload.note,
-        # embedding=None — заповниться пізніше
+        embedding=await run_in_threadpool(embed_one, payload.note),
     )
     db.add(transaction)
     await db.commit()
@@ -152,6 +153,9 @@ async def update_transaction(
         )
     transaction.amount = payload.amount
     transaction.category = payload.category
+    # Ембединг перераховуємо лише коли текст справді змінився.
+    if payload.note != transaction.note:
+        transaction.embedding = await run_in_threadpool(embed_one, payload.note)
     transaction.note = payload.note
     if payload.spent_at is not None:
         transaction.spent_at = payload.spent_at

@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "dev-only-insecure-change-me"
     JWT_TTL_HOURS: int = 24 * 30
 
+    # LLM для AI-чату. Порожній ключ = чат вимкнений, решта застосунку працює.
+    GROQ_API_KEY: str = ""
+    # API Groq сумісний з OpenAI, тому базову адресу й модель винесено в
+    # налаштування — зміна провайдера не потребує правок у коді.
+    LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
+    LLM_MODEL: str = "openai/gpt-oss-120b"
+
     model_config = {"env_file": ENV_FILE, "extra": "ignore"}
 
 
