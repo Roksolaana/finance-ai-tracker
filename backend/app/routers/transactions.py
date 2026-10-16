@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta, timezone, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
@@ -46,47 +46,6 @@ async def create_transaction(
     await db.commit()
     await db.refresh(transaction)
     return transaction
-
-
-@router.post(
-    "/bulk",
-    response_model=list[TransactionRead],
-    status_code=status.HTTP_201_CREATED,
-    summary="Додати багато транзакцій одразу",
-)
-async def create_transactions_bulk(
-    payload: list[TransactionCreate],
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> list[Transaction]:
-    """Масове створення (використовується для заповнення демо-даними)."""
-    transactions = [
-        Transaction(
-            user_id=user.id,
-            amount=item.amount,
-            category=item.category,
-            spent_at=item.spent_at or datetime.now(timezone.utc),
-            note=item.note,
-        )
-        for item in payload
-    ]
-    db.add_all(transactions)
-    await db.commit()
-    return transactions
-
-
-@router.delete(
-    "/",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Видалити всі транзакції",
-)
-async def delete_all_transactions(
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> None:
-    """Видаляє всі транзакції поточного користувача."""
-    await db.execute(delete(Transaction).where(Transaction.user_id == user.id))
-    await db.commit()
 
 
 def _escape_like(value: str) -> str:

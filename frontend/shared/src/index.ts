@@ -6,5 +6,4 @@ export * from "./api/auth";
 export * from "./api/transactions";
 export * from "./api/budgets";
 export * from "./api/stats";
-export * from "./mocks/transactions";
 export * from "./mocks/chat";

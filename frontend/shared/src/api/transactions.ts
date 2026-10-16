@@ -51,13 +51,5 @@ export function createTransactionsApi(baseUrl: string = API_URL) {
     async remove(id: string): Promise<void> {
       await request<void>(`${root}/${id}`, { method: "DELETE" });
     },
-    async removeAll(): Promise<void> {
-      await request<void>(`${root}/`, { method: "DELETE" });
-    },
-    async createMany(inputs: TransactionInput[]): Promise<void> {
-      for (let i = 0; i < inputs.length; i += 500) {
-        await request<ApiTransaction[]>(`${root}/bulk`, { method: "POST", body: JSON.stringify(inputs.slice(i, i + 500)) });
-      }
-    },
   };
 }
