@@ -18,6 +18,8 @@ interface TransactionsContextValue {
   monthStats: MonthStats | null;
   loadError: string | null;
   statsFailed: boolean;
+  /** Росте з кожною зміною даних — щоб сторінки могли перезапитати свої агрегати. */
+  dataVersion: number;
   reload: () => Promise<void>;
   addTransaction: (input: TransactionInput) => Promise<void>;
   updateTransaction: (id: string, input: TransactionInput) => Promise<void>;
@@ -34,6 +36,11 @@ const TransactionsContext = createContext<TransactionsContextValue | null>(null)
 const api = createTransactionsApi("/api/v1");
 const budgetsApi = createBudgetsApi("/api/v1");
 const statsApi = createStatsApi("/api/v1");
+
+// Частіше за це не перезавантажуємо все при поверненні у вкладку: focus
+// спрацьовує на кожне перемикання між вікнами, і кожного разу тягнути весь
+// список транзакцій, ліміти та статистику — забагато.
+const REFRESH_ON_FOCUS_AFTER_MS = 60_000;
 
 const bySpentAtDesc = (a: Transaction, b: Transaction) => b.spent_at.localeCompare(a.spent_at);
 
@@ -54,6 +61,9 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
   // Лічильник локальних змін. Якщо поки тривало завантаження списку
   // користувач щось додав, стара відповідь уже неактуальна.
   const mutationsRef = useRef(0);
+  // Час останнього вдалого завантаження. 0 — щоб після збою перше ж
+  // повернення у вкладку пробувало знову.
+  const lastLoadRef = useRef(0);
 
   const invalidateStats = useCallback(() => setDataVersion((v) => v + 1), []);
 
@@ -70,6 +80,7 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
       if (mutationsRef.current === mutationsAtStart) setTransactions(loadedTransactions);
       storeBudgetLimits(loadedLimits);
       setListError(null);
+      lastLoadRef.current = Date.now();
     } catch (e) {
       setListError(e instanceof Error ? e.message : "Не вдалося завантажити дані");
     } finally {
@@ -88,7 +99,11 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
 
   // Дані могли змінитися в Swagger або в іншій вкладці.
   useEffect(() => {
-    const onVisible = () => document.visibilityState === "visible" && reload();
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastLoadRef.current < REFRESH_ON_FOCUS_AFTER_MS) return;
+      reload();
+    };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
     return () => {
@@ -97,12 +112,20 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
     };
   }, [reload]);
 
+  // Місяць, для якого зараз лежать цифри в monthStats.
+  const statsMonthRef = useRef(selectedMonth);
+
   useEffect(() => {
     let cancelled = false;
-    // Скидаємо перед запитом: інакше при перемиканні місяця на екрані
-    // лишалися б цифри попереднього під новим заголовком, а при збої
-    // запиту вони б так і висіли як актуальні.
-    setMonthStats(null);
+    // Скидаємо лише при перемиканні місяця: інакше на екрані лишалися б цифри
+    // попереднього під новим заголовком. Під час звичайного оновлення даних
+    // старі цифри лишаються до приходу нових — якщо скидати й тоді, дашборд
+    // блимав заглушкою «Завантаження…» на кожен фокус вікна і кожне
+    // збереження, а прокрутка стрибала нагору.
+    if (statsMonthRef.current !== selectedMonth) {
+      statsMonthRef.current = selectedMonth;
+      setMonthStats(null);
+    }
     setStatsError(null);
     statsApi
       .month(selectedMonth)
@@ -111,6 +134,8 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
       })
       .catch((e) => {
         if (!cancelled) {
+          // Старі цифри після збою вже не можна показувати як актуальні.
+          setMonthStats(null);
           setStatsError(e instanceof Error ? e.message : "Не вдалося порахувати статистику");
         }
       });
@@ -119,37 +144,49 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
     };
   }, [selectedMonth, dataVersion]);
 
+  // Лічильник змін підіймаємо і до запиту, і після. До — щоб відкинути
+  // відповідь завантаження, яке вже летить і могло прочитати базу ще без
+  // цієї зміни. Після — щоб так само відкинути завантаження, яке стартувало,
+  // поки чекали на сервер.
+  const trackMutation = useCallback(async <T,>(request: () => Promise<T>): Promise<T> => {
+    mutationsRef.current += 1;
+    try {
+      return await request();
+    } finally {
+      mutationsRef.current += 1;
+    }
+  }, []);
+
   const value = useMemo<TransactionsContextValue>(
     () => ({
       transactions: [...transactions].sort(bySpentAtDesc),
       monthStats,
       loadError: listError ?? statsError,
       statsFailed: statsError !== null,
+      dataVersion,
       reload,
       addTransaction: async (input) => {
-        const created = await api.create(input);
-        mutationsRef.current += 1;
-        setTransactions((prev) => [created, ...prev]);
+        const created = await trackMutation(() => api.create(input));
+        // Фонове завантаження могло встигнути принести цей запис раніше,
+        // тоді без фільтра він зʼявився б у списку двічі.
+        setTransactions((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
         invalidateStats();
       },
       updateTransaction: async (id, input) => {
-        const updated = await api.update(id, input);
-        mutationsRef.current += 1;
+        const updated = await trackMutation(() => api.update(id, input));
         setTransactions((prev) => prev.map((t) => (t.id === id ? updated : t)));
         invalidateStats();
       },
       deleteTransaction: async (id) => {
         const removed = transactions.find((t) => t.id === id);
-        await api.remove(id);
-        mutationsRef.current += 1;
+        await trackMutation(() => api.remove(id));
         setTransactions((prev) => prev.filter((t) => t.id !== id));
         invalidateStats();
         return removed;
       },
       restoreTransaction: async ({ amount, category, note, spent_at }) => {
-        const created = await api.create({ amount, category, note, spent_at });
-        mutationsRef.current += 1;
-        setTransactions((prev) => [created, ...prev]);
+        const created = await trackMutation(() => api.create({ amount, category, note, spent_at }));
+        setTransactions((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
         invalidateStats();
       },
       budgetLimits,
@@ -160,7 +197,18 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
       selectedMonth,
       setSelectedMonth,
     }),
-    [transactions, monthStats, listError, statsError, reload, invalidateStats, budgetLimits, selectedMonth],
+    [
+      transactions,
+      monthStats,
+      listError,
+      statsError,
+      dataVersion,
+      reload,
+      invalidateStats,
+      trackMutation,
+      budgetLimits,
+      selectedMonth,
+    ],
   );
 
   return <TransactionsContext.Provider value={value}>{children}</TransactionsContext.Provider>;

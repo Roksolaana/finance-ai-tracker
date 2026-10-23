@@ -27,7 +27,8 @@ export function TransactionsPage() {
     categoryParam && (CATEGORIES as readonly string[]).includes(categoryParam)
       ? (categoryParam as TransactionCategory)
       : "all";
-  const type = (params.get("type") ?? "all") as TypeFilter;
+  const typeParam = params.get("type");
+  const type: TypeFilter = typeParam === "expense" || typeParam === "income" ? typeParam : "all";
   const sort: SortOrder = params.get("sort") === "amount" ? "amount" : "date";
   const allTimeParam = params.get("period");
   const allTime = allTimeParam === "all";

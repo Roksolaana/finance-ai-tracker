@@ -55,11 +55,31 @@ function Shell() {
 }
 
 function Gate() {
-  const { user, checking } = useAuth();
+  const { user, checking, offline, retry, logout } = useAuth();
 
   if (checking) {
     return (
       <div className="flex h-screen items-center justify-center text-sm text-muted">Завантаження…</div>
+    );
+  }
+  // Токен збережений, але перевірити його не вдалося. Сторінка входу тут
+  // лише заплутувала б: акаунт нікуди не дівся, просто сервер не відповідає.
+  if (!user && offline) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center px-6 text-center">
+        <p className="font-display text-lg font-semibold">Немає зʼєднання із сервером</p>
+        <p className="mt-1 max-w-sm text-sm text-muted">
+          Перевірте, чи запущений сервер, і спробуйте ще раз.
+        </p>
+        <div className="mt-5 flex gap-2">
+          <button onClick={logout} className="btn-ghost">
+            Увійти в інший акаунт
+          </button>
+          <button onClick={retry} className="btn-primary">
+            Спробувати знову
+          </button>
+        </div>
+      </div>
     );
   }
   if (!user) return <AuthPage />;

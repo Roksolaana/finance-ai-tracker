@@ -6,10 +6,21 @@ import { useTransactions } from "../context/TransactionsContext";
 import { useUi } from "../context/UiContext";
 import { CategoryIcon } from "./CategoryIcon";
 
+// Лишаємо цифри й лише перший десятковий розділювач. Раніше фільтр пропускав
+// тільки цифри: «1500,50» зберігалося як 150050 ₴, а наявний ліміт 1500.5
+// після будь-якого натискання клавіші ставав 15005.
+function sanitizeLimit(raw: string): string {
+  const cleaned = raw.replace(/[^\d.,]/g, "");
+  const sep = cleaned.search(/[.,]/);
+  if (sep === -1) return cleaned;
+  return cleaned.slice(0, sep + 1) + cleaned.slice(sep + 1).replace(/[.,]/g, "");
+}
+
 export function BudgetsDialog() {
   const { budgetsOpen, setBudgetsOpen, showToast, showError } = useUi();
   const { budgetLimits, setBudgetLimits } = useTransactions();
   const [draft, setDraft] = useState<Partial<Record<TransactionCategory, string>>>({});
+  const [error, setError] = useState<string | null>(null);
 
   // Ліміти в ref, щоб фонове оновлення даних (перезавантаження при фокусі вікна)
   // не перезаписувало те, що користувач уже набрав у відкритому діалозі.
@@ -24,6 +35,7 @@ export function BudgetsDialog() {
       initial[c] = limit ? String(limit) : "";
     }
     setDraft(initial);
+    setError(null);
   }, [budgetsOpen]);
 
   const [saving, setSaving] = useState(false);
@@ -31,9 +43,20 @@ export function BudgetsDialog() {
   const handleSave = async () => {
     const limits: BudgetLimits = {};
     for (const c of EXPENSE_CATEGORIES) {
-      const value = Number(draft[c]);
-      if (value > 0) limits[c] = value;
+      const raw = draft[c] ?? "";
+      if (!raw) continue;
+      const value = Number(raw.replace(",", "."));
+      if (Number.isNaN(value) || value <= 0) {
+        setError(`Ліміт для «${c}» має бути більшим за нуль. Щоб не відстежувати категорію, залиште поле порожнім.`);
+        return;
+      }
+      if (/[.,]\d{3,}$/.test(raw)) {
+        setError(`Ліміт для «${c}»: вкажіть не більше двох знаків після коми.`);
+        return;
+      }
+      limits[c] = value;
     }
+    setError(null);
     setSaving(true);
     try {
       await setBudgetLimits(limits);
@@ -68,10 +91,13 @@ export function BudgetsDialog() {
                 <span className="flex-1 text-sm font-medium capitalize">{c}</span>
                 <div className="relative w-36">
                   <input
-                    inputMode="numeric"
+                    inputMode="decimal"
                     aria-label={`Місячний ліміт, категорія «${c}»`}
                     value={draft[c] ?? ""}
-                    onChange={(e) => setDraft((d) => ({ ...d, [c]: e.target.value.replace(/\D/g, "") }))}
+                    onChange={(e) => {
+                      setDraft((d) => ({ ...d, [c]: sanitizeLimit(e.target.value) }));
+                      setError(null);
+                    }}
                     placeholder="без ліміту"
                     className="input h-9 pr-8 text-right"
                   />
@@ -80,6 +106,12 @@ export function BudgetsDialog() {
               </div>
             ))}
           </div>
+
+          {error && (
+            <p role="alert" className="mt-4 rounded-xl bg-negative-tint px-3 py-2 text-sm text-negative">
+              {error}
+            </p>
+          )}
 
           <div className="mt-6 flex justify-end gap-2">
             <button onClick={() => setBudgetsOpen(false)} className="btn-ghost">

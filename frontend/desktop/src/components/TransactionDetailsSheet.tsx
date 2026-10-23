@@ -1,3 +1,4 @@
+import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { CalendarDays, Pencil, StickyNote, Tag, Trash2, X } from "lucide-react";
 import { filterByMonth, monthKey } from "@finance/shared";
@@ -17,9 +18,13 @@ export function TransactionDetailsSheet() {
       )
     : [];
   const relatedTotal = related.reduce((s, t) => s + Math.abs(t.amount), 0) + Math.abs(transaction?.amount ?? 0);
+  // Без цього подвійний клік слав два DELETE: другий отримував 404, і поруч
+  // із «Транзакцію видалено» вискакувала помилка.
+  const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
-    if (!transaction) return;
+    if (!transaction || deleting) return;
+    setDeleting(true);
     try {
       const removed = await deleteTransaction(transaction.id);
       closeDetails();
@@ -34,6 +39,8 @@ export function TransactionDetailsSheet() {
       );
     } catch (err) {
       showError(err instanceof Error ? err.message : "Не вдалося видалити");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -112,9 +119,9 @@ export function TransactionDetailsSheet() {
               </div>
 
               <div className="flex gap-2 border-t border-line-soft p-4">
-                <button onClick={handleDelete} className="btn-danger">
+                <button onClick={handleDelete} disabled={deleting} className="btn-danger disabled:opacity-60">
                   <Trash2 size={16} />
-                  Видалити
+                  {deleting ? "Видалення…" : "Видалити"}
                 </button>
                 <button onClick={() => openEditForm(transaction)} className="btn-primary flex-1">
                   <Pencil size={16} />

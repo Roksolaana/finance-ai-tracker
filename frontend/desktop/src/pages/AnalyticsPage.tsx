@@ -59,7 +59,7 @@ const statsApi = createStatsApi("/api/v1");
 const MONTHS_IN_WINDOW = 6;
 
 export function AnalyticsPage() {
-  const { transactions, selectedMonth, monthStats, statsFailed, reload } = useTransactions();
+  const { transactions, selectedMonth, monthStats, statsFailed, dataVersion, reload } = useTransactions();
   const [monthly, setMonthly] = useState<MonthlyStats | null>(null);
   const [monthlyFailed, setMonthlyFailed] = useState(false);
 
@@ -77,9 +77,10 @@ export function AnalyticsPage() {
     return () => {
       cancelled = true;
     };
-    // Залежність від примітива, а не від обʼєкта: ідентичність monthStats
-    // змінюється на кожне оновлення даних і тягла зайвий запит.
-  }, [selectedMonth, monthStats?.transaction_count]);
+    // Від версії даних, а не від monthStats: статистика місяця приходить
+    // окремою відповіддю вже після зміни даних, і залежність від неї
+    // запитувала /stats/monthly двічі на кожне оновлення.
+  }, [selectedMonth, dataVersion]);
 
   if (!monthStats || !monthly) {
     const failed = monthlyFailed || statsFailed;

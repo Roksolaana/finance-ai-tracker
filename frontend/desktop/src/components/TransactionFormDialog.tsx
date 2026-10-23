@@ -49,6 +49,13 @@ export function TransactionFormDialog() {
     e.preventDefault();
     // Без цього подвійний клік створював два однакові записи.
     if (saving) return;
+    // «1,000» раніше читалося як 1 ₴, хоча людина, найімовірніше, мала на
+    // увазі тисячу. Вгадувати не беремося: кома з рівно трьома цифрами після
+    // неї чи кілька розділювачів — просимо записати суму без розділювачів тисяч.
+    if ((amount.match(/[.,]/g) ?? []).length > 1 || /^\d+,\d{3}$/.test(amount)) {
+      setError("Запишіть суму без розділювачів тисяч, наприклад 1000 або 1000,50");
+      return;
+    }
     const parsed = Number(amount.replace(",", "."));
     if (!amount || Number.isNaN(parsed) || parsed <= 0) {
       setError("Вкажіть суму більшу за нуль");
@@ -151,12 +158,13 @@ export function TransactionFormDialog() {
 
             {kind === "expense" && (
               <div>
-                <span className="label">Категорія</span>
-                <div className="grid grid-cols-3 gap-2">
+                <span className="label" id="category-label">Категорія</span>
+                <div className="grid grid-cols-3 gap-2" role="group" aria-labelledby="category-label">
                   {EXPENSE_CATEGORIES.map((c) => (
                     <button
                       key={c}
                       type="button"
+                      aria-pressed={category === c}
                       onClick={() => setCategory(c)}
                       className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-xs font-medium capitalize transition-all ${
                         category === c

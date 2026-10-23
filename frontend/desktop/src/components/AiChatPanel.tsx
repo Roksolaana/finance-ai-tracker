@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, Database, Info, Layers, RotateCcw, Search, Sparkles, X } from "lucide-react";
 import {
   NO_TOOL_INFO,
@@ -24,6 +24,9 @@ function localId(): string {
   localIdCounter += 1;
   return `local-${Date.now()}-${localIdCounter}`;
 }
+
+// Та сама межа, що й у класах max-xl:/xl: (80rem): нижче панель — накладка.
+const WIDE_LAYOUT = "(min-width: 80rem)";
 
 const ROUTE_ICONS: Record<ToolKind, typeof Database> = {
   sql: Database,
@@ -85,9 +88,16 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [statusFailed, setStatusFailed] = useState(false);
+  // Поки історія не прийшла, надсилати не даємо: відповідь history() інакше
+  // перезаписувала щойно поставлене питання і знайдені записи до нього.
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyFailed, setHistoryFailed] = useState(false);
+  const historyLoadingRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  const checkStatus = useCallback(() => {
     chatApi
       .status()
       .then((value) => {
@@ -99,16 +109,70 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
         setEnabled(false);
         setStatusFailed(true);
       });
-    // Розмова зберігається на сервері, тож після перезавантаження сторінки
-    // (і на телефоні) вона та сама.
+  }, []);
+
+  // Розмова зберігається на сервері, тож після перезавантаження сторінки
+  // (і на телефоні) вона та сама.
+  const loadHistory = useCallback(() => {
+    if (historyLoadingRef.current) return;
+    historyLoadingRef.current = true;
+    setHistoryFailed(false);
     chatApi
       .history()
       .then((history) => {
         setMessages([...chatGreeting, ...history.messages]);
         setFound(history.transactions);
+        setHistoryLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => setHistoryFailed(true))
+      .finally(() => {
+        historyLoadingRef.current = false;
+      });
   }, []);
+
+  // Статус перевіряємо при кожному відкритті, а не лише при старті: сервер
+  // міг піднятися чи отримати ключ, поки панель була закрита. Історію
+  // довантажуємо, якщо минулого разу не вийшло.
+  useEffect(() => {
+    if (hidden) return;
+    checkStatus();
+    if (!historyLoaded) loadHistory();
+    // historyLoaded навмисно не в залежностях: інакше успішне завантаження
+    // історії ще раз смикало б status().
+  }, [hidden, checkStatus, loadHistory]);
+
+  // На вузькому вікні панель — накладка поверх сторінки: фокус переносимо в
+  // неї, а при закритті повертаємо туди, де він був.
+  useEffect(() => {
+    if (hidden || window.matchMedia(WIDE_LAYOUT).matches) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const input = inputRef.current;
+    (input && !input.disabled ? input : panelRef.current)?.focus();
+    return () => previous?.focus();
+  }, [hidden]);
+
+  // Escape закриває накладку. Діалоги Radix самі обробляють Escape і
+  // викликають preventDefault — тоді панель не чіпаємо, щоб одне натискання
+  // не закрило і діалог, і асистента.
+  useEffect(() => {
+    if (hidden) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (window.matchMedia(WIDE_LAYOUT).matches) return;
+      if (document.querySelector('[role="dialog"][data-state="open"]')) return;
+      toggleChat();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [hidden, toggleChat]);
+
+  const canSend = !!enabled && historyLoaded && !sending;
+
+  // Під час першого відкриття поле ще вимкнене (статус та історія в дорозі),
+  // тож фокус стає на саму панель. Щойно поле оживає — переводимо його туди.
+  useEffect(() => {
+    if (canSend && document.activeElement === panelRef.current) inputRef.current?.focus();
+  }, [canSend]);
 
   const restart = async () => {
     if (!window.confirm("Почати розмову заново? Поточна розмова зникне на всіх пристроях.")) return;
@@ -129,7 +193,7 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
 
   const send = async (text: string) => {
     const question = text.trim();
-    if (!question || sending) return;
+    if (!question || !canSend) return;
 
     const outgoing: ChatMessage = {
       id: localId(),
@@ -158,8 +222,11 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
     // Нижче 1280px колонка 360px стискала дашборд до половини вікна,
     // тому там панель стає накладкою справа.
     <aside
+      ref={panelRef}
+      tabIndex={-1}
+      aria-label="AI-асистент"
       hidden={hidden}
-      className="card flex w-[360px] shrink-0 flex-col overflow-hidden max-xl:fixed max-xl:inset-y-3 max-xl:right-3 max-xl:z-30 max-xl:shadow-pop xl:my-4 xl:mr-4"
+      className="card flex w-[360px] shrink-0 flex-col overflow-hidden outline-none max-xl:fixed max-xl:inset-y-3 max-xl:right-3 max-xl:z-30 max-xl:shadow-pop xl:my-4 xl:mr-4"
     >
       <div className="flex items-center justify-between border-b border-line-soft px-5 py-4">
         <div className="flex items-center gap-2.5">
@@ -236,7 +303,7 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
               <button
                 key={prompt}
                 onClick={() => send(prompt)}
-                disabled={!enabled || sending}
+                disabled={!canSend}
                 className="block w-full rounded-xl border border-dashed border-line px-3.5 py-2.5 text-left text-xs text-muted transition-colors hover:border-olive-soft hover:text-ink disabled:pointer-events-none disabled:opacity-60"
               >
                 {prompt}
@@ -256,6 +323,14 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
               : "Асистент вимкнений: на сервері не задано ключ LLM."}
           </div>
         )}
+        {historyFailed && (
+          <p className="mb-3 flex items-center justify-between gap-2 rounded-xl bg-gold-tint px-3 py-2.5 text-xs text-gold">
+            Не вдалося завантажити попередню розмову.
+            <button type="button" onClick={loadHistory} className="shrink-0 font-medium underline">
+              Спробувати знову
+            </button>
+          </p>
+        )}
         {error && (
           <p role="alert" className="mb-3 rounded-xl bg-negative-tint px-3 py-2.5 text-xs text-negative">
             {error}
@@ -273,16 +348,17 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
           </label>
           <input
             id="chat-input"
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            disabled={!enabled || sending}
+            disabled={!canSend}
             maxLength={1000}
-            placeholder="Запитайте про свої витрати…"
+            placeholder={historyLoaded ? "Запитайте про свої витрати…" : "Завантаження розмови…"}
             className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted disabled:cursor-not-allowed"
           />
           <button
             type="submit"
-            disabled={!enabled || sending || !input.trim()}
+            disabled={!canSend || !input.trim()}
             aria-label="Надіслати"
             className="inline-flex size-9 items-center justify-center rounded-xl bg-olive text-white transition-colors hover:bg-olive-deep disabled:bg-line disabled:text-muted"
           >

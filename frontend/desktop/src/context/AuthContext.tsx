@@ -27,6 +27,9 @@ interface AuthContextValue {
   user: AuthUser | null;
   /** true, поки перевіряємо збережений токен — інтерфейс ще не вирішив, що показати. */
   checking: boolean;
+  /** Збережений токен є, але сервер не відповів — невідомо, чи він ще дійсний. */
+  offline: boolean;
+  retry: () => void;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => void;
@@ -37,10 +40,14 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checking, setChecking] = useState(true);
+  const [offline, setOffline] = useState(false);
+  // Кожне збільшення — нова спроба перевірити збережений токен.
+  const [attempt, setAttempt] = useState(0);
 
   const logout = useCallback(() => {
     setAuthToken(null);
     writeToken(null);
+    setOffline(false);
     setUser(null);
   }, []);
 
@@ -70,29 +77,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (rejected) {
           setAuthToken(null);
           writeToken(null);
+        } else {
+          // Раніше тут просто показувалася сторінка входу, і було незрозуміло,
+          // чому застосунок «забув» акаунт.
+          setOffline(true);
         }
       })
       .finally(() => !cancelled && setChecking(false));
     return () => {
       cancelled = true;
     };
+  }, [attempt]);
+
+  const retry = useCallback(() => {
+    setOffline(false);
+    setChecking(true);
+    setAttempt((n) => n + 1);
   }, []);
 
   const value = useMemo<AuthContextValue>(() => {
     const apply = (result: { access_token: string; user: AuthUser }) => {
       setAuthToken(result.access_token);
       writeToken(result.access_token);
+      setOffline(false);
       setUser(result.user);
+    };
+    // Після старту без сервера старий токен лишався в клієнті. Тоді помилка в
+    // паролі (401) спрацьовувала як «токен відхилено» і запускала вихід,
+    // тож перед входом прибираємо його самі.
+    const dropStaleToken = () => {
+      setAuthToken(null);
+      writeToken(null);
     };
     return {
       user,
       checking,
-      login: async (email, password) => apply(await authApi.login(email, password)),
-      register: async (email, password, displayName) =>
-        apply(await authApi.register(email, password, displayName)),
+      offline,
+      retry,
+      login: async (email, password) => {
+        dropStaleToken();
+        apply(await authApi.login(email, password));
+      },
+      register: async (email, password, displayName) => {
+        dropStaleToken();
+        apply(await authApi.register(email, password, displayName));
+      },
       logout,
     };
-  }, [user, checking, logout]);
+  }, [user, checking, offline, retry, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

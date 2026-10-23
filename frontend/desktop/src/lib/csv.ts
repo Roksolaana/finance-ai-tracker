@@ -9,16 +9,24 @@ function cell(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
+// Текст, що починається з =, +, -, @ чи табуляції, Excel читає як формулу:
+// нотатка «-знижка» показувалася як #NAME?, а вписана «=HYPERLINK(...)»
+// спрацювала б. Апостроф попереду змушує сприйняти клітинку як текст.
+// Суму так не обробляємо — вона мусить лишитися числом.
+function textCell(value: string): string {
+  return cell(/^[=+\-@\t\r]/.test(value) ? `'${value}` : value);
+}
+
 export function exportTransactionsToCsv(transactions: Transaction[]) {
-  const header = ["Дата", "Категорія", "Нотатка", "Сума"];
+  const header = ["Дата", "Категорія", "Нотатка", "Сума"].map(textCell);
   const rows = transactions.map((t) => [
-    new Date(t.spent_at).toLocaleDateString("uk-UA"),
-    t.category,
-    t.note ?? "",
-    t.amount.toFixed(2).replace(".", ","),
+    textCell(new Date(t.spent_at).toLocaleDateString("uk-UA")),
+    textCell(t.category),
+    textCell(t.note ?? ""),
+    cell(t.amount.toFixed(2).replace(".", ",")),
   ]);
 
-  const csv = [header, ...rows].map((row) => row.map(cell).join(DELIMITER)).join("\r\n");
+  const csv = [header, ...rows].map((row) => row.join(DELIMITER)).join("\r\n");
 
   // BOM, щоб Excel коректно показував кирилицю
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
