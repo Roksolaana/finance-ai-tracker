@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -10,17 +11,49 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { chatGreeting, quickPrompts, type ChatMessage, type ToolKind } from "@finance/shared";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import {
+  NO_TOOL_INFO,
+  ROUTE_INFO,
+  chatGreeting,
+  quickPrompts,
+  type ChatMessage,
+  type Transaction,
+} from "@finance/shared";
 import { chatApi } from "@/api";
 import { theme } from "@/theme";
+import { ScreenHeader } from "@/ui";
+import { useNav } from "@/navigation/context";
 
-// Який шлях дав відповідь — показуємо явно, це суть роботи.
-const TOOL_LABELS: Record<ToolKind, string> = {
-  sql: "SQL-агрегація",
-  rag: "Семантичний пошук",
-  hybrid: "Гібрид: пошук + SQL",
-};
+// Як отримано відповідь — відкривається кнопкою «i», щоб не заважати читати.
+function HowAnswered({ message, found }: { message: ChatMessage; found?: Transaction[] }) {
+  const call = message.tool_call;
+  const route = call ? ROUTE_INFO[call.kind] : undefined;
+  return (
+    <View style={styles.details}>
+      {route && call ? (
+        <>
+          <Text style={styles.detailsTitle}>{route.title}</Text>
+          {route.steps.map((step, i) => (
+            <Text key={step} style={styles.detailsText}>
+              {i + 1}. {step}
+            </Text>
+          ))}
+          <Text style={styles.detailsMeta}>
+            {call.name} · {(call.duration_ms / 1000).toFixed(1)} с · записів: {found?.length ?? 0}
+          </Text>
+          {found?.slice(0, 5).map((t) => (
+            <Text key={t.id} style={styles.detailsText} numberOfLines={1}>
+              • {t.note ?? t.category} · {Math.abs(t.amount)} ₴
+            </Text>
+          ))}
+        </>
+      ) : (
+        <Text style={styles.detailsText}>{NO_TOOL_INFO}</Text>
+      )}
+    </View>
+  );
+}
 
 let idCounter = 0;
 function localId(): string {
@@ -29,13 +62,15 @@ function localId(): string {
 }
 
 export function ChatScreen() {
-  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<ChatMessage[]>(chatGreeting);
+  const [found, setFound] = useState<Record<string, Transaction[]>>({});
+  const [opened, setOpened] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [statusFailed, setStatusFailed] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
   useEffect(() => {
@@ -50,7 +85,47 @@ export function ChatScreen() {
         setEnabled(false);
         setStatusFailed(true);
       });
+    // Вкладка перемонтовується при кожному переході, тож розмову беремо з
+    // сервера. Не вийшло — лишається привітання, писати можна й так.
+    chatApi
+      .history()
+      .then((history) => {
+        setMessages([...chatGreeting, ...history.messages]);
+        setFound(history.transactions);
+      })
+      .catch(() => {})
+      .finally(() => setHistoryLoaded(true));
   }, []);
+
+  // Питання з підказки на головній. Чекаємо історію: інакше вона, прийшовши
+  // пізніше, перезаписала б щойно надіслане питання.
+  const { pendingQuestion, takeQuestion } = useNav();
+  useEffect(() => {
+    if (!pendingQuestion || !historyLoaded || !enabled || sending) return;
+    takeQuestion();
+    void send(pendingQuestion);
+    // send змінюється на кожному рендері; запуск керується лише цими станами.
+  },[pendingQuestion, historyLoaded, enabled, sending, takeQuestion]);
+
+  const restart = () => {
+    Alert.alert("Почати розмову заново?", "Поточна розмова зникне на всіх пристроях.", [
+      { text: "Скасувати", style: "cancel" },
+      {
+        text: "Почати заново",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await chatApi.clearHistory();
+            setMessages(chatGreeting);
+            setFound({});
+            setError(null);
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Не вдалося очистити розмову");
+          }
+        },
+      },
+    ]);
+  };
 
   const send = async (text: string) => {
     const question = text.trim();
@@ -70,6 +145,9 @@ export function ChatScreen() {
     try {
       const reply = await chatApi.send(question, [...history, outgoing]);
       setMessages((prev) => [...prev, reply.message]);
+      if (reply.transactions.length) {
+        setFound((prev) => ({ ...prev, [reply.message.id]: reply.transactions }));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося отримати відповідь");
     } finally {
@@ -81,11 +159,25 @@ export function ChatScreen() {
     <KeyboardAvoidingView
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Text style={styles.title}>AI-асистент</Text>
-      </View>
+      <ScreenHeader
+        title="AI-асистент"
+        subtitle="Питайте про свої гроші своїми словами"
+        right={
+          messages.length > chatGreeting.length ? (
+            <Pressable
+              onPress={restart}
+              disabled={sending}
+              accessibilityRole="button"
+              accessibilityLabel="Почати розмову заново"
+              hitSlop={8}
+              style={styles.restart}
+            >
+              <Ionicons name="refresh" size={20} color={theme.olive} />
+            </Pressable>
+          ) : undefined
+        }
+      />
 
       <FlatList
         ref={listRef}
@@ -94,17 +186,32 @@ export function ChatScreen() {
         contentContainerStyle={styles.list}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
         renderItem={({ item }) => (
-          <View style={item.role === "user" ? styles.userWrap : styles.botWrap}>
-            <View style={item.role === "user" ? styles.userBubble : styles.botBubble}>
-              <Text style={item.role === "user" ? styles.userText : styles.botText}>{item.content}</Text>
+          item.role === "user" ? (
+            <View style={styles.userWrap}>
+              <View style={styles.userBubble}>
+                <Text style={styles.userText}>{item.content}</Text>
+              </View>
             </View>
-            {item.tool_call && (
-              <Text style={styles.badge}>
-                {TOOL_LABELS[item.tool_call.kind] ?? item.tool_call.name} ·{" "}
-                {(item.tool_call.duration_ms / 1000).toFixed(1)} с
-              </Text>
-            )}
-          </View>
+          ) : (
+            <View style={styles.botWrap}>
+              <View style={styles.botBubble}>
+                <Text style={styles.botText}>{item.content}</Text>
+              </View>
+              {!chatGreeting.some((m) => m.id === item.id) && (
+                <Pressable
+                  onPress={() => setOpened((current) => (current === item.id ? null : item.id))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Як отримано відповідь"
+                  accessibilityState={{ expanded: opened === item.id }}
+                  hitSlop={10}
+                  style={[styles.info, opened === item.id && styles.infoActive]}
+                >
+                  <Text style={[styles.infoText, opened === item.id && styles.infoTextActive]}>i</Text>
+                </Pressable>
+              )}
+              {opened === item.id && <HowAnswered message={item} found={found[item.id]} />}
+            </View>
+          )
         )}
         ListFooterComponent={
           <View>
@@ -133,7 +240,7 @@ export function ChatScreen() {
         }
       />
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom > 0 ? 8 : 12 }]}>
+      <View style={[styles.footer, { paddingBottom: 12 }]}>
         {enabled === false && (
           <Text style={styles.notice}>
             {statusFailed
@@ -166,7 +273,7 @@ export function ChatScreen() {
             accessibilityLabel="Надіслати"
             style={[styles.sendButton, (!enabled || sending || !input.trim()) && styles.sendDisabled]}
           >
-            {sending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.sendText}>↑</Text>}
+            {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="arrow-up" size={20} color="#fff" />}
           </Pressable>
         </View>
       </View>
@@ -176,8 +283,14 @@ export function ChatScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.bg },
-  header: { paddingHorizontal: 20, paddingBottom: 8 },
-  title: { fontSize: 22, fontWeight: "700", color: theme.ink },
+  restart: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.oliveTint,
+  },
   list: { paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
   userWrap: { alignItems: "flex-end" },
   botWrap: { alignItems: "flex-start" },
@@ -201,7 +314,33 @@ const styles = StyleSheet.create({
   },
   userText: { color: "#fff", fontSize: 14, lineHeight: 20 },
   botText: { color: theme.inkSoft, fontSize: 14, lineHeight: 21 },
-  badge: { color: theme.olive, fontSize: 11, marginTop: 5, marginLeft: 4 },
+  details: {
+    maxWidth: "92%",
+    marginTop: 6,
+    marginLeft: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: theme.oliveTint,
+    gap: 3,
+  },
+  detailsTitle: { color: theme.oliveDeep, fontSize: 12, fontWeight: "600", marginBottom: 2 },
+  detailsText: { color: theme.oliveDeep, fontSize: 12, lineHeight: 17 },
+  detailsMeta: { color: theme.olive, fontSize: 11, marginTop: 4 },
+  info: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.line,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+    marginLeft: 6,
+  },
+  infoActive: { backgroundColor: theme.olive, borderColor: theme.olive },
+  infoText: { color: theme.muted, fontSize: 11, fontWeight: "700", fontStyle: "italic" },
+  infoTextActive: { color: "#fff" },
   thinking: { color: theme.muted, fontSize: 12, marginTop: 8, marginLeft: 4 },
   prompts: { marginTop: 16, gap: 8 },
   promptsTitle: { fontSize: 11, color: theme.muted, textTransform: "uppercase", fontWeight: "600" },
@@ -246,5 +385,4 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   sendDisabled: { backgroundColor: theme.line },
-  sendText: { color: "#fff", fontSize: 18, fontWeight: "600" },
 });

@@ -4,7 +4,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/AuthContext";
 import { theme } from "@/theme";
 import { AuthScreen } from "@/screens/AuthScreen";
-import { Tabs } from "@/navigation/Tabs";
+import { Navigator } from "@/navigation/Navigator";
 
 function Gate() {
   const { user, checking } = useAuth();
@@ -16,7 +16,7 @@ function Gate() {
       </View>
     );
   }
-  return user ? <Tabs /> : <AuthScreen />;
+  return user ? <Navigator /> : <AuthScreen />;
 }
 
 export default function App() {

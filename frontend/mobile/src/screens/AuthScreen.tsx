@@ -144,8 +144,9 @@ export function AuthScreen() {
         </View>
 
         {/* Видно, до якого бекенду підключається телефон — найчастіша причина
-            проблем на показі: інша мережа або інша адреса машини. */}
-        <Text style={styles.hint}>{API_BASE_URL}</Text>
+            проблем на показі: інша мережа або інша адреса машини. У зібраному
+            застосунку користувачу ця адреса ні до чого. */}
+        {__DEV__ && <Text style={styles.hint}>{API_BASE_URL}</Text>}
       </ScrollView>
     </KeyboardAvoidingView>
   );
