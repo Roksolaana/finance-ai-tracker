@@ -272,8 +272,8 @@ async def hybrid_search_and_sum(
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> ToolOutcome:
-    """RAG знаходить записи за змістом, SQL рахує їхню суму."""
-    hits = await semantic_search(db, user_id, query_text, top_k=200)
+    """RAG знаходить записи за змістом, SQL рахує суму витрат серед них."""
+    hits = await semantic_search(db, user_id, query_text, top_k=200, expenses_only=True)
     if not hits:
         return ToolOutcome("hybrid", {"found": 0, "total": 0.0}, [])
 
@@ -281,6 +281,10 @@ async def hybrid_search_and_sum(
     conditions = [
         Transaction.user_id == user_id,
         Transaction.id.in_(ids),
+        # Лише витрати: інструмент відповідає на «скільки пішло на…». Без цього
+        # на «витрати через стрес цього місяця» пошук чіпляв «Стипендія за
+        # місяць», і дохід складався з витратами в одну суму.
+        Transaction.amount < 0,
         *_date_bounds(date_from, date_to),
     ]
     # Суму рахує база, а не модель — у цьому сенс гібридного інструмента.
@@ -392,7 +396,8 @@ def tool_schemas() -> list[dict[str, Any]]:
                 "name": "hybrid_search_and_sum",
                 "description": (
                     "Коли треба порахувати суму для витрат, які описані змістом, а не категорією "
-                    "(«скільки я витратила через стрес»). Знаходить записи за змістом і підсумовує їх у базі."
+                    "(«скільки я витратила через стрес»). Знаходить записи за змістом і підсумовує їх у базі. "
+                    "Враховує лише витрати, доходи не рахує."
                 ),
                 "parameters": {
                     "type": "object",

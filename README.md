@@ -26,6 +26,32 @@ uvicorn app.main:app --reload
 
 Для розробки UI з hot-reload можна окремо запустити `npm run dev` у `frontend/desktop` (порт 5173).
 
+## Мобільний застосунок
+
+Той самий бекенд, але слухати він має всю локальну мережу, а не лише цей комп'ютер:
+
+```bash
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --reload
+
+cd ../frontend/mobile
+npx expo start --lan
+```
+
+Телефон має бути в тій самій Wi-Fi мережі. QR-код з термінала відкривається в Expo Go.
+Якщо застосунок не бачить сервер, спершу відкрийте з телефона `http://<IP ноутбука>:8000/health`.
+
+## Тести
+
+Тести створюють окрему базу `finance_test` у тому ж контейнері й видаляють її в кінці,
+тож робочі дані не зачіпаються. Docker має працювати.
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
 ## Схема БД
 
 Схема описана Alembic-міграціями в `backend/migrations/versions/`. Застосунок

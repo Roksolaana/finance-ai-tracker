@@ -8,6 +8,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.database import settings
+from app.migrate import DatabaseUnavailable
 from app.models import Base
 
 config = context.config
@@ -28,9 +29,21 @@ def _run(connection) -> None:
 
 async def _run_online() -> None:
     engine = create_async_engine(settings.DATABASE_URL, poolclass=pool.NullPool)
-    async with engine.connect() as connection:
+    # Помилки зʼєднання asyncpg приходять сирими й різнотипними
+    # (ConnectionRefusedError, gaierror, InvalidPasswordError, …), тож
+    # «база недоступна» визначаємо за місцем падіння, а не за типом:
+    # усе, що впало до встановлення зʼєднання, — проблема доступу,
+    # усе після — проблема самої міграції.
+    try:
+        connection = await engine.connect()
+    except Exception as exc:
+        await engine.dispose()
+        raise DatabaseUnavailable(f"{type(exc).__name__}: {exc}") from exc
+    try:
         await connection.run_sync(_run)
-    await engine.dispose()
+    finally:
+        await connection.close()
+        await engine.dispose()
 
 
 if context.is_offline_mode():

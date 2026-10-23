@@ -137,13 +137,12 @@ export function ChatScreen() {
       content: question,
       timestamp: new Date().toISOString(),
     };
-    const history = messages;
     setMessages((prev) => [...prev, outgoing]);
     setInput("");
     setError(null);
     setSending(true);
     try {
-      const reply = await chatApi.send(question, [...history, outgoing]);
+      const reply = await chatApi.send(question);
       setMessages((prev) => [...prev, reply.message]);
       if (reply.transactions.length) {
         setFound((prev) => ({ ...prev, [reply.message.id]: reply.transactions }));

@@ -137,13 +137,12 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
       content: question,
       timestamp: new Date().toISOString(),
     };
-    const history = messages;
     setMessages((prev) => [...prev, outgoing]);
     setInput("");
     setError(null);
     setSending(true);
     try {
-      const reply = await chatApi.send(question, [...history, outgoing]);
+      const reply = await chatApi.send(question);
       setMessages((prev) => [...prev, reply.message]);
       if (reply.transactions.length) {
         setFound((prev) => ({ ...prev, [reply.message.id]: reply.transactions }));
@@ -156,9 +155,11 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
   };
 
   return (
+    // Нижче 1280px колонка 360px стискала дашборд до половини вікна,
+    // тому там панель стає накладкою справа.
     <aside
       hidden={hidden}
-      className="card my-4 mr-4 flex w-[360px] shrink-0 flex-col overflow-hidden"
+      className="card flex w-[360px] shrink-0 flex-col overflow-hidden max-xl:fixed max-xl:inset-y-3 max-xl:right-3 max-xl:z-30 max-xl:shadow-pop xl:my-4 xl:mr-4"
     >
       <div className="flex items-center justify-between border-b border-line-soft px-5 py-4">
         <div className="flex items-center gap-2.5">

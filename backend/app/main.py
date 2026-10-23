@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from app.database import JwtSecretNotPersisted, engine, ensure_jwt_secret
 from app.embeddings import embed_one
-from app.migrate import upgrade_to_head
+from app.migrate import DatabaseUnavailable, upgrade_to_head
 from app.routers import auth, budgets, chat, stats, transactions
 
 logger = logging.getLogger(__name__)
@@ -38,11 +38,17 @@ async def lifespan(app: FastAPI):
     try:
         # Alembic синхронний, тому виносимо його в окремий потік.
         await asyncio.to_thread(upgrade_to_head)
-    except Exception:
+    except DatabaseUnavailable as exc:
         # Якщо БД недоступна (не запущений Docker), сервер усе одно піднімаємо:
         # інтерфейс завантажиться й покаже помилку зʼєднання з кнопкою повтору.
         # Інакше не віддавався б навіть статичний фронтенд.
-        logger.exception("Не вдалося застосувати міграції — працюємо без бази даних")
+        logger.warning("База даних недоступна (%s) — працюємо без неї, міграції не застосовано", exc)
+    except Exception:
+        # А от зламана міграція — інша справа: база є, але схема в невідомому
+        # стані. Раніше це теж тихо списувалось на «немає бази», і сервер
+        # працював з недомігрованою схемою. Краще не стартувати зовсім.
+        logger.exception("Міграція схеми завершилась помилкою — сервер не запускається")
+        raise
     # Модель ембедингів вантажиться ~3 с. Без прогріву це платив перший запит
     # на додавання транзакції. Не чекаємо: сервер має відповідати одразу.
     warmup = asyncio.create_task(asyncio.to_thread(embed_one, "прогрів"))
@@ -58,7 +64,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Застосунок однокористувацький і без cookie-автентифікації, тому запити
+# Автентифікація через токен у заголовку, а не через cookie, тому запити
 # дозволені з будь-якого джерела — це потрібно мобільному клієнту (Expo),
 # який працює з іншого хоста в локальній мережі.
 app.add_middleware(

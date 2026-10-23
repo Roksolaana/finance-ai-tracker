@@ -14,8 +14,6 @@ export interface ChatHistory {
   transactions: Record<string, Transaction[]>;
 }
 
-const HISTORY_LIMIT = 10;
-
 export function createChatApi(baseUrl: string = API_URL) {
   const root = `${baseUrl}/chat`;
 
@@ -25,16 +23,12 @@ export function createChatApi(baseUrl: string = API_URL) {
       const data = await request<{ enabled: boolean }>(`${root}/status`);
       return data.enabled;
     },
-    async send(message: string, history: ChatMessage[]): Promise<ChatReply> {
-      return request<ChatReply>(`${root}/`, {
-        method: "POST",
-        body: JSON.stringify({
-          message,
-          // Сервер усе одно бере лише кілька останніх, а схема обмежує довжину
-          // списку — надсилати всю розмову немає сенсу й вона б її відхилила.
-          history: history.slice(-HISTORY_LIMIT).map(({ role, content }) => ({ role, content })),
-        }),
-      });
+    /**
+     * Попередні репліки сервер бере з власної історії, а не від клієнта:
+     * інакше можна було б підкинути вигадану відповідь «асистента».
+     */
+    async send(message: string): Promise<ChatReply> {
+      return request<ChatReply>(`${root}/`, { method: "POST", body: JSON.stringify({ message }) });
     },
     /** Розмова зберігається на сервері — однакова на ноутбуці й телефоні. */
     async history(): Promise<ChatHistory> {

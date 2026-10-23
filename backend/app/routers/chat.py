@@ -53,8 +53,7 @@ async def chat(
         )
 
     messages = [{"role": "system", "content": system_prompt()}]
-    for item in payload.history[-HISTORY_LIMIT:]:
-        messages.append({"role": item.role, "content": item.content})
+    messages.extend(await _recent_context(db, user.id))
     messages.append({"role": "user", "content": payload.message})
 
     started = time.perf_counter()
@@ -124,6 +123,23 @@ async def chat(
         started,
     )
     return await _remember(db, user.id, payload.message, reply)
+
+
+async def _recent_context(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+    """Останні репліки збереженої розмови як контекст для моделі.
+
+    Беремо з бази, а не з запиту: історію, яку надіслав клієнт, можна
+    підробити, а записане в chat_messages сервер зберіг сам.
+    """
+    rows = (
+        await db.execute(
+            select(ChatMessage.role, ChatMessage.content)
+            .where(ChatMessage.user_id == user_id)
+            .order_by(ChatMessage.created_at.desc())
+            .limit(HISTORY_LIMIT)
+        )
+    ).all()
+    return [{"role": role, "content": content} for role, content in reversed(rows)]
 
 
 # Скільки останніх повідомлень віддаємо при відкритті чату.

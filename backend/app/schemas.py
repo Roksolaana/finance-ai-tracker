@@ -163,18 +163,16 @@ class TransactionList(BaseModel):
     per_page: int
 
 
-class ChatMessageIn(BaseModel):
-    """Повідомлення з історії діалогу."""
-
-    role: Literal["user", "assistant"]
-    content: str = Field(..., max_length=4000)
-
-
 class ChatRequest(BaseModel):
-    """Запит до AI-асистента разом з попереднім контекстом."""
+    """Запит до AI-асистента.
+
+    Попередній контекст сервер бере зі збереженої розмови, а не з тіла запиту:
+    інакше клієнт міг би підкласти моделі вигадану репліку «асистента».
+    Старі клієнти ще надсилають поле `history` — воно просто ігнорується
+    (зайві поля Pydantic за замовчуванням відкидає, `extra="forbid"` тут не ставити).
+    """
 
     message: str = Field(..., min_length=1, max_length=1000, examples=["Скільки я витратила на каву цього місяця?"])
-    history: list[ChatMessageIn] = Field(default_factory=list, max_length=20)
 
 
 class ToolCallInfo(BaseModel):

@@ -12,6 +12,14 @@ from alembic.config import Config
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
+class DatabaseUnavailable(RuntimeError):
+    """До бази не вдалося підʼєднатися — міграції навіть не почались.
+
+    Окремий тип, щоб відрізнити «Docker не запущений» від зламаної міграції:
+    у першому випадку сервер може стартувати без бази, у другому — ні.
+    """
+
+
 def alembic_config() -> Config:
     config = Config(str(BACKEND_DIR / "alembic.ini"))
     # Абсолютний шлях: інакше міграції знаходяться лише коли uvicorn

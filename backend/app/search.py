@@ -65,6 +65,7 @@ async def semantic_search(
     # копії витіснили б інші релевантні нотатки. Відсікає поріг, а не ліміт.
     top_k: int = 50,
     threshold: float | None = None,
+    expenses_only: bool = False,
 ) -> list[SearchHit]:
     """Повертає транзакції, зміст нотаток яких близький до запиту.
 
@@ -99,7 +100,13 @@ async def semantic_search(
     rows = (
         await db.execute(
             select(Transaction, distance.label("distance"))
-            .where(Transaction.user_id == user_id, relevant)
+            .where(
+                Transaction.user_id == user_id,
+                relevant,
+                # Відсіюємо доходи ще до ліміту: інакше вони займали б місця в
+                # top_k і могли б витіснити справжні витрати.
+                *([Transaction.amount < 0] if expenses_only else []),
+            )
             .order_by(*order)
             .limit(top_k)
         )
