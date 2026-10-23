@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -23,7 +22,7 @@ import {
 import { chatApi } from "@/api";
 import { theme } from "@/theme";
 import { ScreenHeader } from "@/ui";
-import { useNav } from "@/navigation/context";
+import { useNav, useScreen } from "@/navigation/context";
 
 // Як отримано відповідь — відкривається кнопкою «i», щоб не заважати читати.
 function HowAnswered({ message, found }: { message: ChatMessage; found?: Transaction[] }) {
@@ -73,7 +72,15 @@ export function ChatScreen() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
-  useEffect(() => {
+  // Вкладка лишається змонтованою, тож стан асистента й розмову
+  // перевіряємо щоразу, коли її відкривають: сервер міг ожити, а на ноутбуці
+  // могли дописати розмову.
+  const { visible } = useScreen();
+  const { pendingQuestion, takeQuestion } = useNav();
+  // Росте з кожним надсиланням: історія, запитана до нього, вже застаріла.
+  const sendCount = useRef(0);
+
+  const sync = useCallback(() => {
     chatApi
       .status()
       .then((value) => {
@@ -85,11 +92,11 @@ export function ChatScreen() {
         setEnabled(false);
         setStatusFailed(true);
       });
-    // Вкладка перемонтовується при кожному переході, тож розмову беремо з
-    // сервера. Не вийшло — лишається привітання, писати можна й так.
+    const startedAt = sendCount.current;
     chatApi
       .history()
       .then((history) => {
+        if (startedAt !== sendCount.current) return;
         setMessages([...chatGreeting, ...history.messages]);
         setFound(history.transactions);
       })
@@ -97,15 +104,22 @@ export function ChatScreen() {
       .finally(() => setHistoryLoaded(true));
   }, []);
 
+  useEffect(() => {
+    if (visible) sync();
+  }, [visible, sync]);
+
   // Питання з підказки на головній. Чекаємо історію: інакше вона, прийшовши
   // пізніше, перезаписала б щойно надіслане питання.
-  const { pendingQuestion, takeQuestion } = useNav();
   useEffect(() => {
-    if (!pendingQuestion || !historyLoaded || !enabled || sending) return;
+    if (!pendingQuestion || !historyLoaded || enabled === null || sending) return;
     takeQuestion();
+    if (!enabled) {
+      setError("Асистент зараз недоступний, тому питання не надіслано. Спробуйте трохи згодом");
+      return;
+    }
     void send(pendingQuestion);
     // send змінюється на кожному рендері; запуск керується лише цими станами.
-  },[pendingQuestion, historyLoaded, enabled, sending, takeQuestion]);
+  }, [pendingQuestion, historyLoaded, enabled, sending, takeQuestion]);
 
   const restart = () => {
     Alert.alert("Почати розмову заново?", "Поточна розмова зникне на всіх пристроях.", [
@@ -129,7 +143,8 @@ export function ChatScreen() {
 
   const send = async (text: string) => {
     const question = text.trim();
-    if (!question || sending) return;
+    if (!question || sending || !historyLoaded) return;
+    sendCount.current += 1;
 
     const outgoing: ChatMessage = {
       id: localId(),
@@ -157,7 +172,7 @@ export function ChatScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior="padding"
     >
       <ScreenHeader
         title="AI-асистент"
@@ -226,7 +241,7 @@ export function ChatScreen() {
                   <Pressable
                     key={prompt}
                     onPress={() => send(prompt)}
-                    disabled={!enabled || sending}
+                    disabled={!enabled || sending || !historyLoaded}
                     accessibilityRole="button"
                     style={[styles.prompt, (!enabled || sending) && styles.promptDisabled]}
                   >
@@ -256,7 +271,7 @@ export function ChatScreen() {
           <TextInput
             value={input}
             onChangeText={setInput}
-            editable={!!enabled && !sending}
+            editable={!!enabled && !sending && historyLoaded}
             placeholder="Запитайте про свої витрати…"
             placeholderTextColor={theme.muted}
             style={styles.input}
@@ -267,7 +282,7 @@ export function ChatScreen() {
           />
           <Pressable
             onPress={() => send(input)}
-            disabled={!enabled || sending || !input.trim()}
+            disabled={!enabled || sending || !historyLoaded || !input.trim()}
             accessibilityRole="button"
             accessibilityLabel="Надіслати"
             style={[styles.sendButton, (!enabled || sending || !input.trim()) && styles.sendDisabled]}

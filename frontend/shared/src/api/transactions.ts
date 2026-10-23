@@ -42,6 +42,20 @@ export function createTransactionsApi(baseUrl: string = API_URL) {
         if (all.length >= data.total || data.items.length === 0) return all;
       }
     },
+    /** Кілька найновіших — для головної не треба тягнути весь список. */
+    async recent(count: number): Promise<Transaction[]> {
+      const data = await request<ApiTransactionList>(`${root}/?page=1&per_page=${count}`);
+      return data.items.map(toTransaction);
+    },
+    /** Операції одного місяця (межі — київська доба, як у статистиці). */
+    async inMonth(month: string): Promise<Transaction[]> {
+      const [y, m] = month.split("-").map(Number);
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const data = await request<ApiTransactionList>(
+        `${root}/?page=1&per_page=${PAGE_SIZE}&date_from=${month}-01&date_to=${month}-${String(lastDay).padStart(2, "0")}`,
+      );
+      return data.items.map(toTransaction);
+    },
     async create(input: TransactionInput): Promise<Transaction> {
       return toTransaction(await request<ApiTransaction>(`${root}/`, { method: "POST", body: JSON.stringify(input) }));
     },

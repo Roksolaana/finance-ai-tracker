@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -13,8 +13,8 @@ import {
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CATEGORIES, dayKey, type Transaction, type TransactionCategory } from "@finance/shared";
 import { transactionsApi } from "@/api";
-import { dayTitle, money, signedMoney } from "@/format";
-import { useNav } from "@/navigation/context";
+import { dayTitle, money, monthLabel, signedMoney } from "@/format";
+import { useNav, useReloadOnChange } from "@/navigation/context";
 import { EmptyState, ScreenHeader, TransactionRow, ui } from "@/ui";
 import { theme } from "@/theme";
 
@@ -27,8 +27,15 @@ const KINDS: { key: Kind; label: string }[] = [
   { key: "income", label: "Доходи" },
 ];
 
-export function TransactionsScreen({ category: initialCategory }: { category?: TransactionCategory }) {
-  const { push, dataVersion } = useNav();
+export function TransactionsScreen({
+  category: initialCategory,
+  month,
+}: {
+  category?: TransactionCategory;
+  /** Відкрито з аналітики місяця — показуємо лише цей місяць. */
+  month?: string;
+}) {
+  const { push } = useNav();
   const [items, setItems] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -38,21 +45,29 @@ export function TransactionsScreen({ category: initialCategory }: { category?: T
   const [category, setCategory] = useState<TransactionCategory | null>(initialCategory ?? null);
   const [sort, setSort] = useState<Sort>("date");
 
+  const request = useRef(0);
   const load = useCallback(async () => {
+    const id = ++request.current;
     try {
-      setItems(await transactionsApi.list());
+      const list = month ? await transactionsApi.inMonth(month) : await transactionsApi.list();
+      if (id !== request.current) return;
+      setItems(list);
       setError(null);
     } catch (err) {
+      if (id !== request.current) return;
       setError(err instanceof Error ? err.message : "Не вдалося завантажити операції");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (id === request.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, []);
+  }, [month]);
 
   useEffect(() => {
     void load();
-  }, [load, dataVersion]);
+  }, [load]);
+  useReloadOnChange(load);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -104,6 +119,7 @@ export function TransactionsScreen({ category: initialCategory }: { category?: T
     <View style={ui.screen}>
       <ScreenHeader
         title="Операції"
+        subtitle={month ? monthLabel(month) : undefined}
         right={
           <Pressable
             onPress={() => setSort((s) => (s === "date" ? "amount" : "date"))}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, BackHandler, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { DepthContext, NavContext, type Route, type TabKey, type Toast } from "@/navigation/context";
+import { NavContext, ScreenContext, type Route, type TabKey, type Toast } from "@/navigation/context";
 import type { IconName } from "@/format";
 import { theme } from "@/theme";
 import { HomeScreen } from "@/screens/HomeScreen";
@@ -32,7 +32,7 @@ function renderRoute(route: Route) {
     case "home":
       return <HomeScreen />;
     case "transactions":
-      return <TransactionsScreen category={route.category} />;
+      return <TransactionsScreen category={route.category} month={route.month} />;
     case "analytics":
       return <AnalyticsScreen />;
     case "chat":
@@ -73,28 +73,38 @@ export function Navigator() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
 
-  const push = useCallback(
-    (route: Route) => {
-      const entry = { id: nextId++, route };
-      setStacks((prev) => ({ ...prev, [active]: [...prev[active], entry] }));
-    },
-    [active],
-  );
-  const pop = useCallback(
-    () =>
-      setStacks((prev) =>
-        prev[active].length > 1 ? { ...prev, [active]: prev[active].slice(0, -1) } : prev,
-      ),
-    [active],
-  );
-  const switchTab = useCallback(
-    (tab: TabKey) => {
-      // Повторне натискання на активну вкладку повертає на її початок.
-      if (tab === active) setStacks((prev) => ({ ...prev, [tab]: ROOTS[tab] }));
-      setActive(tab);
-    },
-    [active],
-  );
+  // Через ref, а не залежність: інакше всі функції навігації мінялись би з
+  // кожним перемиканням вкладки й перемальовували б усі змонтовані екрани.
+  const activeRef = useRef(active);
+  activeRef.current = active;
+
+  const push = useCallback((route: Route) => {
+    const tab = activeRef.current;
+    const entry = { id: nextId++, route };
+    setStacks((prev) => ({ ...prev, [tab]: [...prev[tab], entry] }));
+  }, []);
+  const pop = useCallback(() => {
+    const tab = activeRef.current;
+    setStacks((prev) => (prev[tab].length > 1 ? { ...prev, [tab]: prev[tab].slice(0, -1) } : prev));
+  }, []);
+  // Форма після збереження закриває саме себе. Простий pop() закрив би й
+  // сторінку під нею, якщо людина вже встигла натиснути «назад».
+  const close = useCallback((entryId: number) => {
+    setStacks((prev) => {
+      for (const tab of Object.keys(prev) as TabKey[]) {
+        const stack = prev[tab];
+        if (stack.length > 1 && stack[stack.length - 1].id === entryId) {
+          return { ...prev, [tab]: stack.slice(0, -1) };
+        }
+      }
+      return prev;
+    });
+  }, []);
+  const switchTab = useCallback((tab: TabKey) => {
+    // Повторне натискання на активну вкладку повертає на її початок.
+    if (tab === activeRef.current) setStacks((prev) => ({ ...prev, [tab]: ROOTS[tab] }));
+    setActive(tab);
+  }, []);
   const refresh = useCallback(() => setDataVersion((v) => v + 1), []);
 
   const showToast = useCallback(
@@ -133,8 +143,20 @@ export function Navigator() {
   const takeQuestion = useCallback(() => setPendingQuestion(null), []);
 
   const value = useMemo(
-    () => ({ push, pop, switchTab, showToast, dataVersion, refresh, ask, pendingQuestion, takeQuestion }),
-    [push, pop, switchTab, showToast, dataVersion, refresh, ask, pendingQuestion, takeQuestion],
+    () => ({
+      push,
+      pop,
+      close,
+      activeTab: active,
+      switchTab,
+      showToast,
+      dataVersion,
+      refresh,
+      ask,
+      pendingQuestion,
+      takeQuestion,
+    }),
+    [push, pop, close, active, switchTab, showToast, dataVersion, refresh, ask, pendingQuestion, takeQuestion],
   );
 
   const top = stacks[active][stacks[active].length - 1].route;
@@ -153,7 +175,9 @@ export function Navigator() {
                 style={[StyleSheet.absoluteFill, !visible && styles.hidden]}
                 pointerEvents={visible ? "auto" : "none"}
               >
-                <DepthContext.Provider value={depth}>{renderRoute(entry.route)}</DepthContext.Provider>
+                <ScreenInfoProvider id={entry.id} depth={depth} visible={visible}>
+                  {renderRoute(entry.route)}
+                </ScreenInfoProvider>
               </View>
             );
           }),
@@ -211,6 +235,22 @@ export function Navigator() {
       )}
     </NavContext.Provider>
   );
+}
+
+// Окремий компонент, щоб обʼєкт контексту не створювався заново на кожен рендер.
+function ScreenInfoProvider({
+  id,
+  depth,
+  visible,
+  children,
+}: {
+  id: number;
+  depth: number;
+  visible: boolean;
+  children: React.ReactNode;
+}) {
+  const value = useMemo(() => ({ id, depth, visible }), [id, depth, visible]);
+  return <ScreenContext.Provider value={value}>{children}</ScreenContext.Provider>;
 }
 
 function TabButton({

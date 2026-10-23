@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -6,7 +6,7 @@ import { MONTH_NAMES, monthKey, type MonthStats, type Transaction } from "@finan
 import { statsApi, transactionsApi } from "@/api";
 import { useAuth } from "@/AuthContext";
 import { categoryColor, money, signedMoney } from "@/format";
-import { useNav } from "@/navigation/context";
+import { useNav, useReloadOnChange } from "@/navigation/context";
 import { BlockTitle, Card, EmptyState, TransactionRow, ui } from "@/ui";
 import { theme } from "@/theme";
 
@@ -23,7 +23,7 @@ function greeting(hour: number): string {
 export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { push, switchTab, ask, dataVersion } = useNav();
+  const { push, switchTab, ask } = useNav();
   const [stats, setStats] = useState<MonthStats | null>(null);
   const [recent, setRecent] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,23 +33,32 @@ export function HomeScreen() {
   const now = new Date();
   const month = monthKey(now);
 
+  // Відповідь на застарілий запит (збереження, а одразу «Повернути») не
+  // має перезаписати свіжішу.
+  const request = useRef(0);
   const load = useCallback(async () => {
+    const id = ++request.current;
     try {
-      const [monthStats, list] = await Promise.all([statsApi.month(month), transactionsApi.list()]);
+      const [monthStats, list] = await Promise.all([statsApi.month(month), transactionsApi.recent(4)]);
+      if (id !== request.current) return;
       setStats(monthStats);
-      setRecent(list.slice(0, 4));
+      setRecent(list);
       setError(null);
     } catch (err) {
+      if (id !== request.current) return;
       setError(err instanceof Error ? err.message : "Не вдалося завантажити дані");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (id === request.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [month]);
 
   useEffect(() => {
     void load();
-  }, [load, dataVersion]);
+  }, [load]);
+  useReloadOnChange(load);
 
   const firstName = user?.display_name?.split(" ")[0] ?? "";
   const today = now.toLocaleDateString("uk-UA", { weekday: "long", day: "numeric", month: "long" });

@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react";
 import type Ionicons from "@expo/vector-icons/Ionicons";
-import { CATEGORY_COLORS, MONTH_NAMES, dayKey, type TransactionCategory } from "@finance/shared";
+import { CATEGORY_COLORS, MONTH_NAMES, dayKey, shiftDay, type TransactionCategory } from "@finance/shared";
 import { theme } from "@/theme";
 
 export type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -23,7 +23,9 @@ export function monthLabel(key: string): string {
 
 export function dayTitle(key: string): string {
   const today = dayKey(new Date());
-  const yesterday = dayKey(new Date(Date.now() - 86_400_000));
+  // Календарний зсув ключа: «мінус 24 години» в день переходу на літній час
+  // давав позавчора.
+  const yesterday = shiftDay(today, -1);
   if (key === today) return "Сьогодні";
   if (key === yesterday) return "Вчора";
   const [y, m, d] = key.split("-").map(Number);

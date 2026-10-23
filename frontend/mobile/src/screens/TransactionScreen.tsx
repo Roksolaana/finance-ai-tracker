@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { Transaction } from "@finance/shared";
 import { transactionsApi } from "@/api";
 import { capitalize, signedMoney } from "@/format";
-import { useNav } from "@/navigation/context";
+import { useNav, useScreen } from "@/navigation/context";
 import { Card, CategoryIcon, PrimaryButton, ScreenHeader, ui } from "@/ui";
 import { theme } from "@/theme";
 
@@ -17,7 +17,8 @@ function Field({ label, value, last }: { label: string; value: string; last?: bo
 }
 
 export function TransactionScreen({ transaction: initial }: { transaction: Transaction }) {
-  const { push, pop, showToast, refresh } = useNav();
+  const { push, close, showToast, refresh } = useNav();
+  const screen = useScreen();
   // Після редагування показуємо оновлені дані, а не ті, з якими відкрили.
   const [transaction, setTransaction] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -32,7 +33,7 @@ export function TransactionScreen({ transaction: initial }: { transaction: Trans
     try {
       await transactionsApi.remove(transaction.id);
       refresh();
-      pop();
+      close(screen.id);
       showToast({
         text: "Операцію видалено",
         kind: "success",

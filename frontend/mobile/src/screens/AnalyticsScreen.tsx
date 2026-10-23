@@ -3,7 +3,6 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Share, StyleS
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   MONTH_NAMES_SHORT,
-  filterByMonth,
   monthKey,
   shiftMonth,
   type MonthStats,
@@ -12,14 +11,14 @@ import {
 } from "@finance/shared";
 import { statsApi, transactionsApi } from "@/api";
 import { categoryColor, money, monthLabel, signedMoney } from "@/format";
-import { useNav } from "@/navigation/context";
+import { useNav, useReloadOnChange } from "@/navigation/context";
 import { BlockTitle, Card, CategoryIcon, EmptyState, ScreenHeader, ui } from "@/ui";
 import { theme } from "@/theme";
 
 const CHART_MONTHS = 12;
 
 export function AnalyticsScreen() {
-  const { push, showToast, dataVersion } = useNav();
+  const { push, showToast } = useNav();
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const [stats, setStats] = useState<MonthStats | null>(null);
   const [history, setHistory] = useState<MonthlySummary[]>([]);
@@ -27,41 +26,59 @@ export function AnalyticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // При швидкому перемиканні місяців відповіді можуть прийти не по черзі;
+  // показуємо лише відповідь на останній запит.
+  const request = useRef(0);
   const load = useCallback(async (key: string) => {
+    const id = ++request.current;
     try {
-      setStats(await statsApi.month(key));
+      const next = await statsApi.month(key);
+      if (id !== request.current) return;
+      setStats(next);
       setError(null);
     } catch (err) {
+      if (id !== request.current) return;
       setError(err instanceof Error ? err.message : "Не вдалося завантажити аналітику");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (id === request.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    // Інакше під назвою нового місяця, поки він вантажиться, стояли б цифри попереднього.
+    setStats(null);
     setLoading(true);
     void load(month);
-  }, [load, month, dataVersion]);
+  }, [load, month]);
 
   // Стрічка за рік завжди закінчується поточним місяцем і не залежить від
   // вибраного — інакше вона зсувалася б під пальцем після натискання.
   const chartRef = useRef<ScrollView>(null);
-  useEffect(() => {
+  const loadHistory = useCallback(() => {
     statsApi
       .monthly(monthKey(new Date()), CHART_MONTHS)
       .then((monthly) => setHistory(monthly.summaries))
       .catch(() => setHistory([]));
-  }, [dataVersion]);
+  }, []);
+  useEffect(loadHistory, [loadHistory]);
+
+  useReloadOnChange(
+    useCallback(() => {
+      void load(month);
+      loadHistory();
+    }, [load, loadHistory, month]),
+  );
 
   const isCurrent = month === monthKey(new Date());
 
   // На телефоні файл CSV незручний: звіт іде текстом у будь-який месенджер.
   const share = async () => {
-    if (!stats) return;
+    if (!stats || stats.month !== month) return;
     try {
-      const all = await transactionsApi.list();
-      const items = filterByMonth(all, month);
+      const items = await transactionsApi.inMonth(month);
       const lines = [
         `Крона · ${monthLabel(month)}`,
         `Доходи: ${money(stats.total_income)}`,
@@ -177,7 +194,7 @@ export function AnalyticsScreen() {
                   <Pressable
                     key={item.category}
                     onPress={() =>
-                      push({ name: "transactions", category: item.category as TransactionCategory })
+                      push({ name: "transactions", category: item.category as TransactionCategory, month })
                     }
                     accessibilityRole="button"
                     accessibilityHint="Показати операції цієї категорії"

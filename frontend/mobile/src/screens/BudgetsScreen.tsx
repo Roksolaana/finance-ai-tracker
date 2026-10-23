@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,20 +12,25 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EXPENSE_CATEGORIES, monthKey, type BudgetLimits, type TransactionCategory } from "@finance/shared";
 import { budgetsApi, statsApi } from "@/api";
 import { money } from "@/format";
-import { useNav } from "@/navigation/context";
-import { Card, CategoryIcon, PrimaryButton, ScreenHeader, ui } from "@/ui";
+import { useNav, useScreen } from "@/navigation/context";
+import { Card, CategoryIcon, EmptyState, PrimaryButton, ScreenHeader, ui } from "@/ui";
 import { theme } from "@/theme";
 
 export function BudgetsScreen() {
   const insets = useSafeAreaInsets();
-  const { pop, showToast, refresh } = useNav();
+  const { close, showToast, refresh } = useNav();
+  const screen = useScreen();
   const [drafts, setDrafts] = useState<Partial<Record<TransactionCategory, string>>>({});
   const [spent, setSpent] = useState<Partial<Record<string, number>>>({});
   const [loading, setLoading] = useState(true);
+  // Без успішного завантаження зберігати не можна: порожня форма пішла б на
+  // сервер як «без лімітів» і стерла б усі наявні.
+  const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const [limits, stats] = await Promise.all([budgetsApi.get(), statsApi.month(monthKey(new Date()))]);
       const next: Partial<Record<TransactionCategory, string>> = {};
@@ -36,6 +40,7 @@ export function BudgetsScreen() {
       setDrafts(next);
       setSpent(Object.fromEntries(stats.category_breakdown.map((c) => [c.category, c.amount])));
       setError(null);
+      setLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося завантажити ліміти");
     } finally {
@@ -48,6 +53,7 @@ export function BudgetsScreen() {
   }, [load]);
 
   const save = async () => {
+    if (!loaded) return;
     const limits: BudgetLimits = {};
     for (const [category, raw] of Object.entries(drafts)) {
       const value = Number((raw ?? "").replace(",", "."));
@@ -62,7 +68,7 @@ export function BudgetsScreen() {
     try {
       await budgetsApi.replace(limits);
       refresh();
-      pop();
+      close(screen.id);
       showToast({ kind: "success", text: "Ліміти збережено" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося зберегти ліміти");
@@ -71,10 +77,17 @@ export function BudgetsScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={ui.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView style={ui.screen} behavior="padding">
       <ScreenHeader title="Ліміти бюджету" subtitle="Діють щомісяця, поки не зміните" />
       {loading ? (
         <ActivityIndicator color={theme.olive} style={styles.loader} />
+      ) : !loaded ? (
+        <EmptyState
+          icon="cloud-offline-outline"
+          text={error ?? "Не вдалося завантажити ліміти"}
+          action="Спробувати знову"
+          onAction={() => void load()}
+        />
       ) : (
         <ScrollView contentContainerStyle={ui.content} keyboardShouldPersistTaps="handled">
           <Text style={styles.intro}>
@@ -133,7 +146,7 @@ export function BudgetsScreen() {
         </ScrollView>
       )}
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <PrimaryButton label={saving ? "Зберігаю…" : "Зберегти ліміти"} onPress={save} disabled={saving || loading} />
+        <PrimaryButton label={saving ? "Зберігаю…" : "Зберегти ліміти"} onPress={save} disabled={saving || loading || !loaded} />
       </View>
     </KeyboardAvoidingView>
   );

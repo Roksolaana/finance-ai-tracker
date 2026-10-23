@@ -26,6 +26,9 @@ async function writeToken(token: string | null): Promise<void> {
 interface AuthContextValue {
   user: AuthUser | null;
   checking: boolean;
+  /** Токен є, але сервер не відповів — не просимо входити знову, а пропонуємо повторити. */
+  offline: boolean;
+  retry: () => void;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => void;
@@ -36,10 +39,13 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checking, setChecking] = useState(true);
+  const [offline, setOffline] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   const logout = useCallback(() => {
     setAuthToken(null);
     void writeToken(null);
+    setOffline(false);
     setUser(null);
   }, []);
 
@@ -59,7 +65,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthToken(token);
       try {
         const loaded = await authApi.me();
-        if (!cancelled) setUser(loaded);
+        if (!cancelled) {
+          setUser(loaded);
+          setOffline(false);
+        }
       } catch (error) {
         // Токен прибираємо лише коли сервер його відхилив: якщо бекенд просто
         // недоступний (телефон поза мережею), виганяти з акаунта не можна.
@@ -67,6 +76,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (rejected && !cancelled) {
           setAuthToken(null);
           await writeToken(null);
+        } else if (!cancelled) {
+          setOffline(true);
         }
       } finally {
         if (!cancelled) setChecking(false);
@@ -75,23 +86,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   const value = useMemo<AuthContextValue>(() => {
     const apply = async (result: { access_token: string; user: AuthUser }) => {
       setAuthToken(result.access_token);
       await writeToken(result.access_token);
+      setOffline(false);
       setUser(result.user);
     };
+    // Старий токен знімаємо перед входом: інакше 401 на помилковий пароль
+    // виглядав би як «сервер відхилив токен» і стирав би збережений вхід.
+    const fresh = () => setAuthToken(null);
     return {
       user,
       checking,
-      login: async (email, password) => apply(await authApi.login(email, password)),
-      register: async (email, password, displayName) =>
-        apply(await authApi.register(email, password, displayName)),
+      offline,
+      retry: () => {
+        setChecking(true);
+        setAttempt((n) => n + 1);
+      },
+      login: async (email, password) => {
+        fresh();
+        await apply(await authApi.login(email, password));
+      },
+      register: async (email, password, displayName) => {
+        fresh();
+        await apply(await authApi.register(email, password, displayName));
+      },
       logout,
     };
-  }, [user, checking, logout]);
+  }, [user, checking, offline, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

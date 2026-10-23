@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,16 +14,38 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { EXPENSE_CATEGORIES, dayKey, type Transaction, type TransactionCategory } from "@finance/shared";
 import { transactionsApi } from "@/api";
 import { categoryColor, categoryIcon, dayTitle } from "@/format";
-import { useNav } from "@/navigation/context";
+import { useNav, useScreen } from "@/navigation/context";
 import { ScreenHeader, ui } from "@/ui";
 import { theme } from "@/theme";
 
 type Kind = "expense" | "income";
 
-const DAY = 86_400_000;
-
 function startOfDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+// Календарний зсув, а не ±24 години: у день переходу на літній час доба
+// коротша, і «вчора» мінус 24 години потрапляло на позавчора.
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function sameDay(a: Date, b: Date): boolean {
+  return startOfDay(a) === startOfDay(b);
+}
+
+/** Сума з поля або текст помилки. */
+function parseAmount(raw: string): number | string {
+  const separators = raw.match(/[.,]/g)?.length ?? 0;
+  if (separators > 1) return "Вкажіть суму без пробілів і розділювачів тисяч, наприклад 1250.50";
+  // «1,000» — це тисяча чи одна гривня? Краще перепитати, ніж зберегти не те.
+  if (/^\d+,\d{3}$/.test(raw)) return "Незрозуміло, це тисячі чи копійки. Напишіть без коми або з крапкою: 1000 чи 1.00";
+  if (/[.,]\d{3,}$/.test(raw)) return "Копійок може бути не більше двох знаків";
+  const value = Number(raw.replace(",", "."));
+  if (!raw || Number.isNaN(value) || value <= 0) return "Вкажіть суму більшу за нуль";
+  return value;
 }
 
 export function AddScreen({
@@ -37,7 +58,8 @@ export function AddScreen({
   onSaved?: (saved: Transaction) => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { pop, showToast, refresh } = useNav();
+  const { close, showToast, refresh } = useNav();
+  const screen = useScreen();
   const [kind, setKind] = useState<Kind>(edit ? (edit.amount > 0 ? "income" : "expense") : (initialKind ?? "expense"));
   const [amount, setAmount] = useState(edit ? String(Math.abs(edit.amount)) : "");
   const [category, setCategory] = useState<TransactionCategory>(
@@ -49,34 +71,33 @@ export function AddScreen({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const today = startOfDay(new Date());
-  const isToday = startOfDay(when) === today;
-  const isYesterday = startOfDay(when) === today - DAY;
+  const now = new Date();
+  const isToday = sameDay(when, now);
+  const isYesterday = sameDay(when, addDays(now, -1));
 
   const shiftDay = (delta: number) => {
-    const next = new Date(when.getTime() + delta * DAY);
-    if (startOfDay(next) > today) return;
+    const next = addDays(when, delta);
+    if (startOfDay(next) > startOfDay(now)) return;
     // Для сьогоднішнього дня не можна залишити час у майбутньому.
     setWhen(next.getTime() > Date.now() ? new Date() : next);
   };
 
   const setDay = (offset: number) => {
-    const base = new Date();
     if (offset === 0) {
-      setWhen(base);
+      setWhen(new Date());
       return;
     }
-    const target = new Date(today - offset * DAY);
-    target.setHours(when.getHours(), when.getMinutes());
+    const target = addDays(new Date(), -offset);
+    target.setHours(when.getHours(), when.getMinutes(), 0, 0);
     setWhen(target);
   };
 
   const save = async () => {
     if (saving) return;
     setError(null);
-    const parsed = Number(amount.replace(",", "."));
-    if (!amount || Number.isNaN(parsed) || parsed <= 0) {
-      setError("Вкажіть суму більшу за нуль");
+    const parsed = parseAmount(amount);
+    if (typeof parsed === "string") {
+      setError(parsed);
       return;
     }
 
@@ -91,7 +112,7 @@ export function AddScreen({
       const saved = edit ? await transactionsApi.update(edit.id, input) : await transactionsApi.create(input);
       refresh();
       onSaved?.(saved);
-      pop();
+      close(screen.id);
       showToast({
         kind: "success",
         text: edit ? "Зміни збережено" : kind === "income" ? "Дохід додано" : "Витрату додано",
@@ -105,7 +126,7 @@ export function AddScreen({
   const title = edit ? "Редагування" : kind === "income" ? "Новий дохід" : "Нова витрата";
 
   return (
-    <KeyboardAvoidingView style={ui.screen} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView style={ui.screen} behavior="padding">
       <ScreenHeader title={title} />
       <ScrollView contentContainerStyle={[ui.content, styles.content]} keyboardShouldPersistTaps="handled">
         <View style={styles.segmented}>
