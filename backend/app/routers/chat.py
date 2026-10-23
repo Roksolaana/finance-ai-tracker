@@ -14,6 +14,7 @@ import re
 import logging
 import time
 import uuid
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -32,6 +33,35 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 # Скільки останніх повідомлень історії передаємо моделі.
 HISTORY_LIMIT = 10
+
+# Ліміт запитів до асистента на одного користувача: 20 за 10 хвилин.
+# Кожен запит — це два виклики LLM (плюс повтори), а ключ Groq один на всіх
+# з лімітом 30 запитів/хв. Живій розмові 20 питань за 10 хвилин (в середньому
+# одне на 30 с) вистачає з запасом, а скрипт чи «залиплий» клієнт не
+# вичерпає спільну квоту й пул зʼєднань для інших.
+#
+# Лічильник у памʼяті процесу: застосунок працює одним процесом uvicorn, тож
+# окремий Redis заради цього зайвий. Після перезапуску лічильники
+# обнуляються — для захисту від зловживань це не страшно.
+CHAT_RATE_LIMIT = 20
+CHAT_RATE_WINDOW = 600.0
+_recent_requests: dict[uuid.UUID, deque[float]] = defaultdict(deque)
+
+
+def _check_rate_limit(user_id: uuid.UUID) -> None:
+    """Кидає 429, якщо користувач вичерпав ліміт; інакше зараховує запит."""
+    now = time.monotonic()
+    requests = _recent_requests[user_id]
+    while requests and now - requests[0] >= CHAT_RATE_WINDOW:
+        requests.popleft()
+    if len(requests) >= CHAT_RATE_LIMIT:
+        retry_after = int(CHAT_RATE_WINDOW - (now - requests[0])) + 1
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Забагато запитів до асистента. Спробуйте за кілька хвилин",
+            headers={"Retry-After": str(retry_after)},
+        )
+    requests.append(now)
 
 
 @router.get("/status", summary="Чи налаштований AI-чат")
@@ -52,9 +82,17 @@ async def chat(
             detail="AI-асистент не налаштований: не задано ключ LLM",
         )
 
+    _check_rate_limit(user.id)
+
     messages = [{"role": "system", "content": system_prompt()}]
     messages.extend(await _recent_context(db, user.id))
     messages.append({"role": "user", "content": payload.message})
+    # Відповідь LLM може йти хвилину й довше (з повторами після 429), і весь
+    # цей час сесія тримала б зʼєднання з пулу «idle in transaction». Пул —
+    # 5 + 10 зʼєднань, тож півтора десятка одночасних чатів підвішували всі
+    # ендпоінти. close() повертає зʼєднання в пул, а наступний запит сесії
+    # просто візьме нове.
+    await db.close()
 
     started = time.perf_counter()
     try:
@@ -75,6 +113,7 @@ async def chat(
     outcome: ToolOutcome | None = None
     outcome_tool = ""
     seen_transactions: list = []
+    seen_ids: set = set()
 
     for call in calls:
         tool_name = call["function"]["name"]
@@ -91,7 +130,13 @@ async def chat(
                 result = current.payload
                 if outcome is None:
                     outcome, outcome_tool = current, tool_name
-                seen_transactions.extend(current.transactions)
+                # Кілька викликів часто знаходять ті самі записи (сума за
+                # місяць і перелік за той самий місяць) — у відповіді кожен
+                # має бути один раз, у порядку першої появи.
+                for transaction in current.transactions:
+                    if transaction.id not in seen_ids:
+                        seen_ids.add(transaction.id)
+                        seen_transactions.append(transaction)
             except ToolArgumentError as exc:
                 # Зрозуміла проблема з аргументом — текст піде моделі, і вона
                 # пояснить користувачу, що саме не так.
@@ -101,6 +146,9 @@ async def chat(
                 # модель отримує позначку про збій і відповідає словами.
                 logger.exception("Інструмент %s впав на аргументах %s", tool_name, arguments)
                 result = {"error": "Не вдалося виконати запит до даних"}
+                # Після помилки бази транзакція зламана, і наступний
+                # інструмент у тій самій сесії впав би теж.
+                await db.rollback()
 
         messages.append(
             {
@@ -110,6 +158,11 @@ async def chat(
                 "content": json.dumps(result, ensure_ascii=False, default=str),
             }
         )
+
+    # Інструменти вже відпрацювали. Знайдені записи після close відʼєднані
+    # від сесії, але їхні поля вже завантажені, тож для відповіді їх досить,
+    # а зʼєднання на час другого виклику LLM знову не тримаємо.
+    await db.close()
 
     try:
         final = await chat_completion(messages)

@@ -62,6 +62,13 @@ async def test_list_filters_by_local_day(client, alice):
         pytest.param({"category": "кава"}, id="невідома категорія"),
         pytest.param({"amount": 500, "category": "їжа"}, id="дохід у витратній категорії"),
         pytest.param({"amount": -500, "category": "дохід"}, id="витрата в категорії дохід"),
+        # Після округлення до копійки це нуль — ні дохід, ні витрата.
+        pytest.param({"amount": 0.004, "category": "дохід"}, id="нуль після округлення"),
+        pytest.param({"amount": -0.004}, id="відʼємний нуль після округлення"),
+        pytest.param({"amount": -1e20}, id="не вміщається в numeric(12,2)"),
+        pytest.param({"amount": -9999999999.995}, id="виходить за межу після округлення"),
+        pytest.param({"spent_at": "0001-01-01T00:00:00Z"}, id="рік 0001"),
+        pytest.param({"spent_at": "1999-12-31T12:00:00Z"}, id="раніше 2000 року"),
     ],
 )
 async def test_invalid_transaction_is_rejected(client, alice, fields):
@@ -123,3 +130,24 @@ async def test_lists_and_stats_do_not_leak(client, alice, bob):
 
 async def test_requests_without_token_are_rejected(client):
     assert (await client.get(URL)).status_code == 401
+
+
+async def test_largest_amount_still_fits(client, alice):
+    headers, _ = alice
+    response = await add(client, headers, amount=9999999999.99, category="дохід")
+    assert response.status_code == 201
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        pytest.param({"date_from": "0001-01-01"}, id="date_from 0001"),
+        pytest.param({"date_to": "9999-12-31"}, id="date_to 9999"),
+        pytest.param({"date_from": "1999-12-31", "date_to": "2000-01-31"}, id="date_from 1999"),
+    ],
+)
+async def test_list_rejects_dates_out_of_range(client, alice, params):
+    headers, _ = alice
+    response = await client.get(URL, params=params, headers=headers)
+    assert response.status_code == 422
+    assert "2000" in response.json()["detail"]

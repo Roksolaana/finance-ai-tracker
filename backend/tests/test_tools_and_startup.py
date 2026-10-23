@@ -5,11 +5,12 @@ import uuid
 
 import pytest
 from alembic.util import CommandError
+from sqlalchemy import text
 
 from app import main
 from app.database import settings
 from app.migrate import DatabaseUnavailable, upgrade_to_head
-from app.models import Transaction
+from app.models import Base, Transaction
 from app.search import SearchHit
 from app.tools import hybrid_search_and_sum
 
@@ -25,7 +26,7 @@ async def test_hybrid_counts_only_expenses(db, monkeypatch, alice):
     await db.commit()
 
     # Векторний пошук підмінено: саме такий збіг він давав на реальних даних.
-    async def fake_search(db, user_id, query_text, top_k=50, threshold=None, expenses_only=False):
+    async def fake_search(db, user_id, query_text, top_k=50, threshold=None, expenses_only=False, **period):
         return [SearchHit(stress, 0.6), SearchHit(grant, 0.5)]
 
     monkeypatch.setattr("app.tools.semantic_search", fake_search)
@@ -63,3 +64,28 @@ async def test_startup_continues_without_database(monkeypatch):
 async def test_startup_fails_on_broken_migration(monkeypatch):
     with pytest.raises(CommandError):
         await _start(monkeypatch, CommandError("Can't locate revision"))
+
+
+async def test_column_comments_match_models(db):
+    """Після міграцій коментарі колонок збігаються з app/models.py.
+
+    Робоча база колись розійшлася зі свіжою (обернений знак у
+    transactions.amount), і цього ніхто не помітив.
+    """
+    rows = (
+        await db.execute(
+            text(
+                "SELECT c.relname, a.attname, col_description(c.oid, a.attnum) "
+                "FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid "
+                "WHERE c.relnamespace = 'public'::regnamespace AND c.relkind = 'r' "
+                "AND a.attnum > 0 AND NOT a.attisdropped AND c.relname <> 'alembic_version'"
+            )
+        )
+    ).all()
+    in_database = {(table, column): comment for table, column, comment in rows}
+    in_models = {
+        (table.name, column.name): column.comment
+        for table in Base.metadata.tables.values()
+        for column in table.columns
+    }
+    assert in_database == in_models

@@ -18,10 +18,10 @@ from typing import Any, Literal
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.constants import CATEGORIES
+from app.constants import CATEGORIES, DATE_RANGE_ERROR
 from app.models import Transaction
-from app.search import semantic_search
-from app.timeutils import TZ, local_midnight, local_today
+from app.search import date_bounds, semantic_search
+from app.timeutils import TZ, in_date_range, local_today, period_end, previous_period
 
 ToolKind = Literal["sql", "rag", "hybrid"]
 
@@ -42,14 +42,12 @@ class ToolOutcome:
     transactions: list[Transaction]
 
 
+def _optional_date(value: str | None) -> datetime.date | None:
+    return _parse_date(value) if value else None
+
+
 def _date_bounds(date_from: str | None, date_to: str | None):
-    conditions = []
-    if date_from:
-        conditions.append(Transaction.spent_at >= local_midnight(_parse_date(date_from)))
-    if date_to:
-        end = _parse_date(date_to) + datetime.timedelta(days=1)
-        conditions.append(Transaction.spent_at < local_midnight(end))
-    return conditions
+    return date_bounds(_optional_date(date_from), _optional_date(date_to))
 
 
 def _parse_date(value: str) -> datetime.date:
@@ -61,11 +59,14 @@ def _parse_date(value: str) -> datetime.date:
     періоду, тож кидаємо зрозумілу помилку, яку модель пояснить словами.
     """
     try:
-        return datetime.date.fromisoformat(value)
+        day = datetime.date.fromisoformat(value)
     except ValueError:
         raise ToolArgumentError(
             f"Не вдалося розібрати дату «{value}». Потрібен формат YYYY-MM-DD."
         ) from None
+    if not in_date_range(day):
+        raise ToolArgumentError(f"{DATE_RANGE_ERROR}, отримано «{value}».")
+    return day
 
 
 def _describe(transaction: Transaction) -> dict[str, Any]:
@@ -95,19 +96,24 @@ async def query_transactions(
     max_amount: float | None = None,
 ) -> ToolOutcome:
     """Детермінована агрегація через SQL."""
-    conditions = [Transaction.user_id == user_id, *_date_bounds(date_from, date_to)]
+    # Усі фільтри, крім періоду, збираються один раз: попередній період
+    # рахується з ними ж і відрізняється лише датами. Раніше порівняння
+    # будувало власний список і губило min_amount/max_amount, тож «витрати
+    # понад тисячу» порівнювались із усіма витратами минулого місяця.
+    filters = [Transaction.user_id == user_id]
     if category:
-        conditions.append(Transaction.category == category)
+        filters.append(Transaction.category == category)
     # Порівнюємо за модулем: користувач каже «витрати понад тисячу», маючи на
     # увазі розмір суми, а не те, що вона відʼємна.
     if min_amount is not None:
-        conditions.append(func.abs(Transaction.amount) >= min_amount)
+        filters.append(func.abs(Transaction.amount) >= min_amount)
     if max_amount is not None:
-        conditions.append(func.abs(Transaction.amount) <= max_amount)
+        filters.append(func.abs(Transaction.amount) <= max_amount)
     if tx_type == "income":
-        conditions.append(Transaction.amount > 0)
+        filters.append(Transaction.amount > 0)
     elif tx_type == "expense":
-        conditions.append(Transaction.amount < 0)
+        filters.append(Transaction.amount < 0)
+    conditions = [*filters, *_date_bounds(date_from, date_to)]
 
     aggregation = aggregation or "sum"
     if aggregation == "count":
@@ -171,7 +177,7 @@ async def query_transactions(
     if days and expenses:
         payload["days_in_period"] = days
         payload["average_per_day"] = round(expenses / days, 2)
-    previous = await _previous_period(db, user_id, date_from, date_to, category, tx_type)
+    previous = await _previous_period(db, filters, date_from, date_to)
     if previous is not None:
         payload["previous_period"] = previous
 
@@ -193,44 +199,40 @@ async def _top_categories(db: AsyncSession, conditions: list, limit: int = 5) ->
 
 
 def _period_days(date_from: str | None, date_to: str | None) -> int | None:
+    """Скільки днів у періоді для середнього за день.
+
+    Якщо період ще триває («цей місяць»), рахуємо лише дні, що минули, — як
+    `avg_daily_expense` на дашборді. Інакше 23 жовтня витрати ділились би
+    на 31 день.
+    """
     if not date_from or not date_to:
         return None
-    days = (_parse_date(date_to) - _parse_date(date_from)).days + 1
+    start = _parse_date(date_from)
+    end = period_end(start, _parse_date(date_to), local_today())
+    days = (end - start).days + 1
     return days if days > 0 else None
 
 
 async def _previous_period(
     db: AsyncSession,
-    user_id: uuid.UUID,
+    filters: list,
     date_from: str | None,
     date_to: str | None,
-    category: str | None,
-    tx_type: str | None,
 ) -> dict[str, float] | None:
-    """Той самий за довжиною відрізок перед запитаним — для порівняння.
+    """Попередній період з тими самими фільтрами — для порівняння.
 
     Фраза «на 4% більше, ніж місяцем раніше» робить число зрозумілим, а
-    рахувати його має база, а не модель.
+    рахувати його має база, а не модель. Який саме період вважати
+    попереднім, вирішує `timeutils.previous_period` — те саме правило, що й
+    у порівнянні на дашборді.
     """
-    days = _period_days(date_from, date_to)
-    if not days:
+    if not _period_days(date_from, date_to):
         return None
 
-    start = _parse_date(date_from)  # type: ignore[arg-type]
-    previous_end = start - datetime.timedelta(days=1)
-    previous_start = previous_end - datetime.timedelta(days=days - 1)
-
-    conditions = [
-        Transaction.user_id == user_id,
-        Transaction.spent_at >= local_midnight(previous_start),
-        Transaction.spent_at < local_midnight(previous_end + datetime.timedelta(days=1)),
-    ]
-    if category:
-        conditions.append(Transaction.category == category)
-    if tx_type == "income":
-        conditions.append(Transaction.amount > 0)
-    elif tx_type == "expense":
-        conditions.append(Transaction.amount < 0)
+    previous_start, previous_end = previous_period(
+        _parse_date(date_from), _parse_date(date_to), local_today()  # type: ignore[arg-type]
+    )
+    conditions = [*filters, *date_bounds(previous_start, previous_end)]
 
     row = (
         await db.execute(
@@ -273,7 +275,17 @@ async def hybrid_search_and_sum(
     date_to: str | None = None,
 ) -> ToolOutcome:
     """RAG знаходить записи за змістом, SQL рахує суму витрат серед них."""
-    hits = await semantic_search(db, user_id, query_text, top_k=200, expenses_only=True)
+    # Період передаємо в сам пошук: ліміт top_k має застосовуватись уже до
+    # записів потрібного місяця, а не до всіх, з яких потім лишиться частина.
+    hits = await semantic_search(
+        db,
+        user_id,
+        query_text,
+        top_k=200,
+        expenses_only=True,
+        date_from=_optional_date(date_from),
+        date_to=_optional_date(date_to),
+    )
     if not hits:
         return ToolOutcome("hybrid", {"found": 0, "total": 0.0}, [])
 

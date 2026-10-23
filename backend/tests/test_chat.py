@@ -1,8 +1,11 @@
 """Історія чату та контекст для моделі. Справжня LLM не викликається."""
 
 import datetime
+import json
 import uuid
 
+import asyncpg
+from conftest import TEST_URL, _raw_dsn
 from sqlalchemy import func, select
 
 from app.models import ChatMessage, Transaction
@@ -110,3 +113,90 @@ async def test_context_comes_from_database_not_request(client, db, monkeypatch, 
     # Нова пара збережена й стане контекстом наступного запиту.
     stored = (await client.get(URL, headers=headers)).json()["messages"]
     assert [m["content"] for m in stored][-2:] == ["А на каву?", "Добре"]
+
+
+async def _open_transactions() -> int:
+    """Скільки зʼєднань з тестовою базою зараз висять «idle in transaction»."""
+    conn = await asyncpg.connect(_raw_dsn(TEST_URL))
+    try:
+        return await conn.fetchval(
+            "SELECT count(*) FROM pg_stat_activity WHERE datname = $1 AND state LIKE 'idle in transaction%'",
+            TEST_URL.database,
+        )
+    finally:
+        await conn.close()
+
+
+async def test_llm_wait_holds_no_db_transaction(client, db, monkeypatch, alice):
+    """Поки чекаємо LLM, зʼєднання з бази не тримаються, а знайдені записи не дублюються."""
+    headers, user_id = alice
+    owner = uuid.UUID(user_id)
+    db.add_all(
+        [
+            Transaction(user_id=owner, amount=-95, category="кафе", spent_at=BASE, note="Лате"),
+            Transaction(user_id=owner, amount=-40, category="їжа", spent_at=BASE, note="Булочка"),
+        ]
+    )
+    await db.commit()
+    await db.close()
+
+    open_during_llm: list[int] = []
+    replies = iter(
+        [
+            {
+                "role": "assistant",
+                "content": None,
+                # Два виклики, що знаходять ті самі записи: «Лате» — в обох.
+                "tool_calls": [
+                    _call("1", {"aggregation": "list", "category": "кафе"}),
+                    _call("2", {"aggregation": "list"}),
+                ],
+            },
+            {"role": "assistant", "content": "Знайшла"},
+        ]
+    )
+
+    async def fake_completion(messages, tools=None):
+        open_during_llm.append(await _open_transactions())
+        return next(replies)
+
+    monkeypatch.setattr("app.routers.chat.is_configured", lambda: True)
+    monkeypatch.setattr("app.routers.chat.chat_completion", fake_completion)
+
+    response = await client.post("/api/v1/chat/", json={"message": "Покажи витрати"}, headers=headers)
+    assert response.status_code == 200, response.text
+
+    assert open_during_llm == [0, 0]
+    notes = [t["note"] for t in response.json()["transactions"]]
+    assert notes == ["Лате", "Булочка"]
+
+
+def _call(call_id: str, arguments: dict) -> dict:
+    return {
+        "id": call_id,
+        "type": "function",
+        "function": {"name": "query_transactions", "arguments": json.dumps(arguments, ensure_ascii=False)},
+    }
+
+
+async def test_chat_is_rate_limited_per_user(client, monkeypatch, alice, bob):
+    alice_headers, _ = alice
+    bob_headers, _ = bob
+
+    async def fake_completion(messages, tools=None):
+        return {"role": "assistant", "content": "Добре"}
+
+    monkeypatch.setattr("app.routers.chat.is_configured", lambda: True)
+    monkeypatch.setattr("app.routers.chat.chat_completion", fake_completion)
+    monkeypatch.setattr("app.routers.chat.CHAT_RATE_LIMIT", 2)
+
+    for _ in range(2):
+        assert (await client.post("/api/v1/chat/", json={"message": "Привіт"}, headers=alice_headers)).status_code == 200
+
+    blocked = await client.post("/api/v1/chat/", json={"message": "Привіт"}, headers=alice_headers)
+    assert blocked.status_code == 429
+    assert blocked.json()["detail"] == "Забагато запитів до асистента. Спробуйте за кілька хвилин"
+    assert int(blocked.headers["Retry-After"]) > 0
+
+    # Ліміт свій у кожного користувача.
+    assert (await client.post("/api/v1/chat/", json={"message": "Привіт"}, headers=bob_headers)).status_code == 200

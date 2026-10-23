@@ -7,14 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import Budget, User
-from app.schemas import BudgetItem
+from app.schemas import BudgetItem, BudgetRead
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
 
 
 @router.get(
     "/",
-    response_model=list[BudgetItem],
+    response_model=list[BudgetRead],
     summary="Отримати всі ліміти",
 )
 async def list_budgets(
@@ -28,7 +28,7 @@ async def list_budgets(
 
 @router.put(
     "/",
-    response_model=list[BudgetItem],
+    response_model=list[BudgetRead],
     summary="Замінити набір лімітів",
 )
 async def replace_budgets(

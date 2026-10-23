@@ -7,13 +7,30 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from app.constants import CATEGORIES, EXPENSE_CATEGORIES, INCOME_CATEGORY
+from app.constants import CATEGORIES, EXPENSE_CATEGORIES, INCOME_CATEGORY, MIN_YEAR
 
 # Допуск, щоб трохи спішний годинник клієнта не ламав запис «щойно».
 CLOCK_SKEW = datetime.timedelta(minutes=5)
 
+# Найбільше значення, яке вміщає Numeric(12, 2) у transactions і budgets.
 MAX_AMOUNT = Decimal("9999999999.99")
 CENT = Decimal("0.01")
+
+# Раніша дата — майже напевно помилка вводу (0001 замість 2001), а не справжня
+# транзакція.
+MIN_SPENT_AT = datetime.datetime(MIN_YEAR, 1, 1, tzinfo=datetime.timezone.utc)
+
+
+def to_cents(value: Decimal) -> Decimal:
+    """Округлює суму до копійки, перевіривши, що вона вміщається в колонку.
+
+    Межу перевіряємо до округлення: quantize на числі на кшталт 1e30 сам
+    падає з InvalidOperation, а все, що не більше MAX_AMOUNT, після
+    округлення теж лишається в межах.
+    """
+    if not value.is_finite() or abs(value) > MAX_AMOUNT:
+        raise ValueError("Сума занадто велика")
+    return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 class RegisterRequest(BaseModel):
@@ -91,12 +108,13 @@ class TransactionCreate(BaseModel):
     @field_validator("amount")
     @classmethod
     def check_amount(cls, value: Decimal) -> Decimal:
+        # Гроші зберігаємо з точністю до копійки; лишнє округлюємо, а не відхиляємо.
+        value = to_cents(value)
+        # Нуль перевіряємо вже після округлення: 0.004 стає 0.00, і такий запис
+        # не був би ні доходом, ні витратою — оминав би перевірку знака нижче.
         if value == 0:
             raise ValueError("Сума не може бути нульовою")
-        if abs(value) > MAX_AMOUNT:
-            raise ValueError("Сума занадто велика")
-        # Гроші зберігаємо з точністю до копійки; лишнє округлюємо, а не відхиляємо.
-        return value.quantize(CENT, rounding=ROUND_HALF_UP)
+        return value
 
     @field_validator("category")
     @classmethod
@@ -114,6 +132,8 @@ class TransactionCreate(BaseModel):
             value = value.replace(tzinfo=datetime.timezone.utc)
         if value > datetime.datetime.now(datetime.timezone.utc) + CLOCK_SKEW:
             raise ValueError("Дата транзакції не може бути в майбутньому")
+        if value < MIN_SPENT_AT:
+            raise ValueError(f"Дата транзакції не може бути раніше {MIN_YEAR} року")
         return value
 
     @field_validator("note")
@@ -303,16 +323,25 @@ class MonthlyStats(BaseModel):
 
 
 class BudgetItem(BaseModel):
-    """Місячний ліміт для однієї категорії."""
-
-    model_config = ConfigDict(from_attributes=True)
+    """Місячний ліміт для однієї категорії (вхідні дані)."""
 
     category: str = Field(
         ...,
         description=f"Витратна категорія. Доступні: {', '.join(EXPENSE_CATEGORIES)}",
         examples=["їжа"],
     )
-    monthly_limit: float = Field(..., gt=0, description="Ліміт на місяць", examples=[6000])
+    monthly_limit: Decimal = Field(..., description="Ліміт на місяць, більше нуля", examples=[6000])
+
+    @field_validator("monthly_limit")
+    @classmethod
+    def check_limit(cls, value: Decimal) -> Decimal:
+        # Як і з сумою транзакції: спершу округлення, потім перевірка на нуль.
+        # Інакше 0.001 зберігалось як 0.00, і такий ліміт потім не проходив
+        # схему відповіді — GET /budgets/ падав з 500 на кожному запиті.
+        value = to_cents(value)
+        if value <= 0:
+            raise ValueError("Ліміт має бути більшим за нуль")
+        return value
 
     @field_validator("category")
     @classmethod
@@ -322,3 +351,17 @@ class BudgetItem(BaseModel):
                 f"Ліміт можна ставити лише на витратну категорію. Доступні: {', '.join(EXPENSE_CATEGORIES)}"
             )
         return value
+
+
+class BudgetRead(BaseModel):
+    """Ліміт у відповіді.
+
+    Окремо від BudgetItem, щоб перевірки вводу не застосовувались до вже
+    збережених рядків: невдалий рядок у базі мав би показатись, а не ламати
+    весь список.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    category: str
+    monthly_limit: float

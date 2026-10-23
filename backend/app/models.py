@@ -192,11 +192,16 @@ class ChatMessage(Base):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        comment="Власник розмови",
     )
-    role: Mapped[str] = mapped_column(String(16), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, comment="user або assistant")
+    content: Mapped[str] = mapped_column(Text, nullable=False, comment="Текст повідомлення")
     # Який інструмент дав відповідь і які записи знайдено (лише для асистента).
-    tool_call: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    tool_call: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        comment="Інструмент і знайдені записи (лише у відповідей асистента)",
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

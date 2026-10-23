@@ -10,11 +10,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
+from app.constants import DATE_RANGE_ERROR
 from app.database import get_db
 from app.models import Transaction, User
 from app.schemas import TransactionCreate, TransactionList, TransactionRead
 from app.embeddings import embed_one
-from app.timeutils import local_midnight
+from app.timeutils import in_date_range, local_midnight
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -77,6 +78,12 @@ async def list_transactions(
     Межі дат рахуються за місцевою добою (`APP_TIMEZONE`) — так само, як
     групує статистика.
     """
+    # Без цієї перевірки 9999-12-31 падав на `date_to + 1 день`, а 0001-01-01 —
+    # на переведенні місцевої півночі в UTC; обидва давали 500.
+    for day in (date_from, date_to):
+        if day is not None and not in_date_range(day):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=DATE_RANGE_ERROR)
+
     # Власник — завжди перша умова: чужі записи не мають бути видимі.
     conditions = [Transaction.user_id == user.id]
     if category:

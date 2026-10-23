@@ -2,6 +2,9 @@
 
 import datetime
 import uuid
+from decimal import Decimal
+
+import pytest
 
 from app.models import Budget, Transaction
 
@@ -93,3 +96,60 @@ async def test_stats_survive_unknown_category(client, db, alice):
     listed = await client.get("/api/v1/transactions/", headers=headers)
     assert listed.status_code == 200
     assert {item["category"] for item in listed.json()["items"]} == {"щось нове", "їжа"}
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [
+        pytest.param(0.001, id="нуль після округлення"),
+        pytest.param(0, id="нуль"),
+        pytest.param(-100, id="відʼємний"),
+        pytest.param(1e20, id="не вміщається в numeric(12,2)"),
+    ],
+)
+async def test_bad_limit_is_rejected_and_list_still_works(client, alice, limit):
+    headers, _ = alice
+    response = await client.put(URL, json=[{"category": "їжа", "monthly_limit": limit}], headers=headers)
+    assert response.status_code == 422
+    message = response.json()["detail"][0]["msg"]
+    assert "Ліміт має бути більшим за нуль" in message or "Сума занадто велика" in message
+
+    listed = await client.get(URL, headers=headers)
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+
+async def test_limit_is_rounded_to_cents(client, alice):
+    headers, _ = alice
+    response = await client.put(URL, json=[{"category": "їжа", "monthly_limit": 100.005}], headers=headers)
+    assert response.status_code == 200
+    assert (await client.get(URL, headers=headers)).json() == [{"category": "їжа", "monthly_limit": 100.01}]
+
+
+async def test_stats_money_has_no_float_tails(client, db, alice):
+    """0.3 - 0.2 у float — це 0.09999999999999998, а не 0.1."""
+    headers, user_id = alice
+    owner = uuid.UUID(user_id)
+    when = datetime.datetime(2026, 9, 10, 12, tzinfo=datetime.timezone.utc)
+    db.add_all(
+        [
+            Transaction(user_id=owner, amount=Decimal("0.3"), category="дохід", spent_at=when),
+            Transaction(user_id=owner, amount=Decimal("-0.2"), category="їжа", spent_at=when),
+        ]
+    )
+    await db.commit()
+
+    month = (await client.get("/api/v1/stats/month", params={"month": "2026-09"}, headers=headers)).json()
+    assert month["balance"] == 0.1
+    assert month["total_balance"] == 0.1
+
+    monthly = (await client.get("/api/v1/stats/monthly", params={"until": "2026-09", "months": 1}, headers=headers)).json()
+    assert monthly["summaries"][0]["net"] == 0.1
+
+
+@pytest.mark.parametrize("month", ["0000-01", "0001-01", "9999-12", "1999-12"])
+async def test_stats_reject_years_out_of_range(client, alice, month):
+    headers, _ = alice
+    for path, key in (("/api/v1/stats/month", "month"), ("/api/v1/stats/monthly", "until")):
+        response = await client.get(path, params={key: month}, headers=headers)
+        assert response.status_code == 422, (path, month)
