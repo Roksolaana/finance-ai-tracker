@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   MONTH_NAMES_SHORT,
+  filterByMonth,
   monthKey,
   shiftMonth,
   type MonthStats,
   type MonthlySummary,
   type TransactionCategory,
 } from "@finance/shared";
-import { statsApi } from "@/api";
+import { statsApi, transactionsApi } from "@/api";
 import { categoryColor, money, monthLabel, signedMoney } from "@/format";
 import { useNav } from "@/navigation/context";
 import { BlockTitle, Card, CategoryIcon, EmptyState, ScreenHeader, ui } from "@/ui";
@@ -18,7 +19,7 @@ import { theme } from "@/theme";
 const CHART_MONTHS = 12;
 
 export function AnalyticsScreen() {
-  const { push, dataVersion } = useNav();
+  const { push, showToast, dataVersion } = useNav();
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const [stats, setStats] = useState<MonthStats | null>(null);
   const [history, setHistory] = useState<MonthlySummary[]>([]);
@@ -54,6 +55,33 @@ export function AnalyticsScreen() {
   }, [dataVersion]);
 
   const isCurrent = month === monthKey(new Date());
+
+  // На телефоні файл CSV незручний: звіт іде текстом у будь-який месенджер.
+  const share = async () => {
+    if (!stats) return;
+    try {
+      const all = await transactionsApi.list();
+      const items = filterByMonth(all, month);
+      const lines = [
+        `Крона · ${monthLabel(month)}`,
+        `Доходи: ${money(stats.total_income)}`,
+        `Витрати: ${money(stats.total_expenses)}`,
+        `Баланс: ${signedMoney(stats.balance)}`,
+        "",
+        "Витрати за категоріями:",
+        ...stats.category_breakdown.map((c) => `• ${c.category}: ${money(c.amount)} (${c.percent}%)`),
+        "",
+        `Операції (${items.length}):`,
+        ...items.map((t) => {
+          const day = new Date(t.spent_at).toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit" });
+          return `${day}  ${signedMoney(t.amount)}  ${t.category}${t.note ? ` — ${t.note}` : ""}`;
+        }),
+      ];
+      await Share.share({ title: `Звіт за ${monthLabel(month)}`, message: lines.join("\n") });
+    } catch {
+      showToast({ kind: "error", text: "Не вдалося підготувати звіт" });
+    }
+  };
   const hint = stats?.comparison_up_to_day
     ? `проти 1–${stats.comparison_up_to_day} числа минулого місяця`
     : "проти минулого місяця";
@@ -62,7 +90,22 @@ export function AnalyticsScreen() {
 
   return (
     <View style={ui.screen}>
-      <ScreenHeader title="Аналітика" />
+      <ScreenHeader
+        title="Аналітика"
+        right={
+          stats && stats.transaction_count > 0 ? (
+            <Pressable
+              onPress={share}
+              accessibilityRole="button"
+              accessibilityLabel="Поділитися звітом за місяць"
+              hitSlop={8}
+              style={styles.share}
+            >
+              <Ionicons name="share-outline" size={20} color={theme.olive} />
+            </Pressable>
+          ) : undefined
+        }
+      />
       <ScrollView
         contentContainerStyle={ui.content}
         refreshControl={
@@ -260,6 +303,14 @@ function Legend({ color, label }: { color: string; label: string }) {
 }
 
 const styles = StyleSheet.create({
+  share: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.oliveTint,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   monthRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   monthButton: {
     width: 44,
@@ -299,7 +350,7 @@ const styles = StyleSheet.create({
   chart: { height: 170, gap: 4, paddingHorizontal: 4 },
   column: { width: 44, alignItems: "center", gap: 6, paddingTop: 6, paddingBottom: 4, borderRadius: 10 },
   columnActive: { backgroundColor: theme.oliveTint },
-  columnYear: { color: theme.inkSoft, fontSize: 10, marginTop: -4 },
+  columnYear: { color: theme.inkSoft, fontSize: 11, marginTop: -4 },
   bars: { flex: 1, flexDirection: "row", alignItems: "flex-end", gap: 3 },
   bar: { width: 10, borderRadius: 4, minHeight: 2 },
   barIncome: { backgroundColor: theme.positive },

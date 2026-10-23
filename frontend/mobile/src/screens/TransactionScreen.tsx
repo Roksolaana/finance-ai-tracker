@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { Transaction } from "@finance/shared";
 import { transactionsApi } from "@/api";
 import { capitalize, signedMoney } from "@/format";
@@ -25,46 +25,39 @@ export function TransactionScreen({ transaction: initial }: { transaction: Trans
   const income = transaction.amount > 0;
   const spentAt = new Date(transaction.spent_at);
 
-  const remove = () => {
-    Alert.alert("Видалити операцію?", transaction.note ?? transaction.category, [
-      { text: "Скасувати", style: "cancel" },
-      {
-        text: "Видалити",
-        style: "destructive",
-        onPress: async () => {
-          setBusy(true);
-          try {
-            await transactionsApi.remove(transaction.id);
-            refresh();
-            pop();
-            showToast({
-              text: "Операцію видалено",
-              kind: "success",
-              action: {
-                label: "Повернути",
-                onPress: async () => {
-                  try {
-                    await transactionsApi.create({
-                      amount: transaction.amount,
-                      category: transaction.category,
-                      note: transaction.note,
-                      spent_at: transaction.spent_at,
-                    });
-                    refresh();
-                    showToast({ text: "Операцію повернуто", kind: "success" });
-                  } catch {
-                    showToast({ text: "Не вдалося повернути операцію", kind: "error" });
-                  }
-                },
-              },
-            });
-          } catch {
-            setBusy(false);
-            showToast({ text: "Не вдалося видалити. Перевірте зʼєднання", kind: "error" });
-          }
+  // Без діалогу «Ви впевнені?»: помилкове видалення скасовує «Повернути»,
+  // так само як на десктопі.
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await transactionsApi.remove(transaction.id);
+      refresh();
+      pop();
+      showToast({
+        text: "Операцію видалено",
+        kind: "success",
+        action: {
+          label: "Повернути",
+          onPress: async () => {
+            try {
+              await transactionsApi.create({
+                amount: transaction.amount,
+                category: transaction.category,
+                note: transaction.note,
+                spent_at: transaction.spent_at,
+              });
+              refresh();
+              showToast({ text: "Операцію повернуто", kind: "success" });
+            } catch {
+              showToast({ text: "Не вдалося повернути операцію", kind: "error" });
+            }
+          },
         },
-      },
-    ]);
+      });
+    } catch {
+      setBusy(false);
+      showToast({ text: "Не вдалося видалити. Перевірте зʼєднання", kind: "error" });
+    }
   };
 
   return (

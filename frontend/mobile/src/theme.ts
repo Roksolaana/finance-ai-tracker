@@ -5,7 +5,8 @@ export const theme = {
   surfaceSoft: "#FBFAF5",
   ink: "#23261C",
   inkSoft: "#4A4E3E",
-  muted: "#80836F",
+  // Не світліше: попередній #80836F давав на білому лише 3.9:1 при нормі 4.5.
+  muted: "#696C58",
   line: "#E7E3D4",
   lineSoft: "#F0EDE2",
   olive: "#5A6B3A",
