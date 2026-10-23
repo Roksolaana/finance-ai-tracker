@@ -13,7 +13,9 @@
 
   --color-ink: #1c2116;
   --color-ink-soft: #3e4433;
-  --color-muted: #80836f;
+  /* Було #80836f — ~3.9:1 на білому, нижче норми 4.5, а цим кольором
+     набрані майже всі підписи. */
+  --color-muted: #696c58;
 
   --color-olive: #5a6b3a;
   --color-olive-deep: #3b4726;

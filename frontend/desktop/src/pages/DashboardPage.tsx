@@ -9,7 +9,7 @@ import { DailyExpensesChart } from "../components/DailyExpensesChart";
 import { CategoryDonut } from "../components/CategoryDonut";
 import { BudgetList } from "../components/BudgetList";
 import { TransactionList } from "../components/TransactionList";
-import { formatMoney, formatMonth } from "../lib/format";
+import { formatMoney } from "../lib/format";
 
 export function DashboardPage() {
   const { transactions, selectedMonth, monthStats, statsFailed, reload } = useTransactions();
@@ -21,7 +21,7 @@ export function DashboardPage() {
   if (!monthStats) {
     return (
       <>
-        <TopBar title="Огляд" subtitle={`Ваші фінанси за ${formatMonth(selectedMonth).toLowerCase()}`} />
+        <TopBar title="Огляд" />
         <div className="card flex flex-col items-center px-6 py-16 text-center">
           {statsFailed ? (
             <>
@@ -47,7 +47,7 @@ export function DashboardPage() {
 
   return (
     <>
-      <TopBar title="Огляд" subtitle={`Ваші фінанси за ${formatMonth(selectedMonth).toLowerCase()}`} />
+      <TopBar title="Огляд" />
 
       {stats.transaction_count === 0 ? (
         <div className="card flex flex-col items-center px-6 py-16 text-center">
@@ -79,13 +79,17 @@ export function DashboardPage() {
                 <circle cx="100" cy="100" r="62" />
                 <circle cx="100" cy="100" r="84" />
               </svg>
-              <p className="text-sm text-white/70">Загальний баланс</p>
+              {/* Головне число — за вибраний місяць. Раніше тут стояв баланс за
+                  весь час, і при перемиканні місяця воно не змінювалося. */}
+              <p className="text-sm text-white/70">
+                {stats.balance >= 0 ? "Заощаджено за місяць" : "Перевитрата за місяць"}
+              </p>
               <p className="mt-2 font-display text-[34px] font-semibold leading-none tracking-tight">
-                {formatMoney(stats.total_balance)}
+                {formatMoney(stats.balance, { sign: true })}
               </p>
               <div className="mt-6 flex flex-wrap items-center gap-2 text-sm">
                 <span className="chip bg-white/15 text-white">
-                  {stats.balance >= 0 ? "Заощаджено" : "Перевитрата"} {formatMoney(Math.abs(stats.balance))}
+                  Баланс за весь час: {formatMoney(stats.total_balance)}
                 </span>
                 {/* Лише при додатній нормі: при перевитраті вийшло б
                     безглузде «−25% доходу збережено». */}

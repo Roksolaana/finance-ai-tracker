@@ -7,9 +7,10 @@ import { useUi } from "../context/UiContext";
 import { TopBar } from "../components/TopBar";
 import { TransactionList } from "../components/TransactionList";
 import { exportTransactionsToCsv } from "../lib/csv";
-import { formatMoney, formatMonth } from "../lib/format";
+import { formatMoney } from "../lib/format";
 
 type TypeFilter = "all" | "expense" | "income";
+type SortOrder = "date" | "amount";
 const PAGE_SIZE = 40;
 
 export function TransactionsPage() {
@@ -27,6 +28,7 @@ export function TransactionsPage() {
       ? (categoryParam as TransactionCategory)
       : "all";
   const type = (params.get("type") ?? "all") as TypeFilter;
+  const sort: SortOrder = params.get("sort") === "amount" ? "amount" : "date";
   const allTimeParam = params.get("period");
   const allTime = allTimeParam === "all";
 
@@ -49,8 +51,12 @@ export function TransactionsPage() {
     if (category !== "all") result = result.filter((t) => t.category === category);
     const q = search.trim().toLowerCase();
     if (q) result = result.filter((t) => t.note?.toLowerCase().includes(q) || t.category.includes(q));
+    // Список з контексту вже відсортований за датою (новіші вгорі), тож
+    // переставляємо лише для сортування за сумою. Модуль — щоб великий дохід
+    // і велика витрата стояли поруч, а не на різних кінцях списку.
+    if (sort === "amount") result = [...result].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
     return result;
-  }, [transactions, selectedMonth, allTime, type, category, search]);
+  }, [transactions, selectedMonth, allTime, type, category, search, sort]);
 
   const income = filtered.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const expense = filtered.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
@@ -60,15 +66,18 @@ export function TransactionsPage() {
     <>
       <TopBar
         title="Транзакції"
-        subtitle={allTime ? "Уся історія" : formatMonth(selectedMonth)}
+        // Місяць і так видно в перемикачі поруч — підзаголовок лише для всієї історії.
+        subtitle={allTime ? "Уся історія" : undefined}
         showMonthPicker={!allTime}
       />
 
       <div className="card mb-5 p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-52 flex-1">
+        {/* Два рядки з фіксованим складом: коли все стояло в одному
+            flex-wrap, елементи переносилися по-різному залежно від ширини. */}
+        <div className="flex items-center gap-3">
+          <div className="relative min-w-0 flex-1">
             <label htmlFor="tx-search" className="sr-only">
-              Пошук за нотаткою
+              Пошук за нотаткою або категорією
             </label>
             <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
             <input
@@ -76,10 +85,40 @@ export function TransactionsPage() {
               type="search"
               value={search}
               onChange={(e) => updateParam("q", e.target.value)}
-              placeholder="Пошук за нотаткою…"
+              placeholder="Пошук за нотаткою або категорією…"
               className="input pl-10"
             />
           </div>
+          <label htmlFor="tx-category" className="sr-only">
+            Категорія
+          </label>
+          <select
+            id="tx-category"
+            value={category}
+            onChange={(e) => updateParam("category", e.target.value)}
+            className="input w-44 shrink-0"
+          >
+            <option value="all">Усі категорії</option>
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c[0].toUpperCase() + c.slice(1)}
+              </option>
+            ))}
+          </select>
+          <label htmlFor="tx-sort" className="sr-only">
+            Сортування
+          </label>
+          <select
+            id="tx-sort"
+            value={sort}
+            onChange={(e) => updateParam("sort", e.target.value === "date" ? null : e.target.value)}
+            className="input w-44 shrink-0"
+          >
+            <option value="date">Спершу нові</option>
+            <option value="amount">Спершу більші суми</option>
+          </select>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <div className="segmented" role="group" aria-label="Тип транзакцій">
             {(
               [
@@ -98,22 +137,6 @@ export function TransactionsPage() {
               </button>
             ))}
           </div>
-          <label htmlFor="tx-category" className="sr-only">
-            Категорія
-          </label>
-          <select
-            id="tx-category"
-            value={category}
-            onChange={(e) => updateParam("category", e.target.value)}
-            className="input w-44"
-          >
-            <option value="all">Усі категорії</option>
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c[0].toUpperCase() + c.slice(1)}
-              </option>
-            ))}
-          </select>
           <div className="segmented" role="group" aria-label="Період">
             <button data-active={!allTime} aria-pressed={!allTime} onClick={() => updateParam("period", null)}>
               Місяць
@@ -138,7 +161,11 @@ export function TransactionsPage() {
             {hasFilters && (
               <button
                 onClick={() => {
-                  setParams(allTime ? { period: "all" } : {}, { replace: true });
+                  // Період і порядок — не фільтри, їх скидання не чіпає.
+                  const next = new URLSearchParams();
+                  if (allTime) next.set("period", "all");
+                  if (sort !== "date") next.set("sort", sort);
+                  setParams(next, { replace: true });
                   setVisible(PAGE_SIZE);
                 }}
                 className="btn-ghost h-9"
@@ -171,7 +198,7 @@ export function TransactionsPage() {
           </div>
         ) : (
           <>
-            <TransactionList transactions={filtered.slice(0, visible)} />
+            <TransactionList transactions={filtered.slice(0, visible)} grouped={sort === "date"} />
             {visible < filtered.length && (
               <div className="mt-4 flex justify-center">
                 <button onClick={() => setVisible((v) => v + PAGE_SIZE)} className="btn-ghost">

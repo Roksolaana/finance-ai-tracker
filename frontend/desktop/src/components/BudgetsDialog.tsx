@@ -7,7 +7,7 @@ import { useUi } from "../context/UiContext";
 import { CategoryIcon } from "./CategoryIcon";
 
 export function BudgetsDialog() {
-  const { budgetsOpen, setBudgetsOpen, showToast } = useUi();
+  const { budgetsOpen, setBudgetsOpen, showToast, showError } = useUi();
   const { budgetLimits, setBudgetLimits } = useTransactions();
   const [draft, setDraft] = useState<Partial<Record<TransactionCategory, string>>>({});
 
@@ -40,7 +40,7 @@ export function BudgetsDialog() {
       setBudgetsOpen(false);
       showToast("Ліміти оновлено");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Не вдалося зберегти ліміти");
+      showError(err instanceof Error ? err.message : "Не вдалося зберегти ліміти");
     } finally {
       setSaving(false);
     }

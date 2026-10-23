@@ -5,6 +5,7 @@ import { EXPENSE_CATEGORIES, dayKey, monthKey, type TransactionCategory } from "
 import { useTransactions } from "../context/TransactionsContext";
 import { useUi } from "../context/UiContext";
 import { CategoryIcon } from "./CategoryIcon";
+import { formatMonth } from "../lib/format";
 
 type Kind = "expense" | "income";
 
@@ -15,7 +16,7 @@ function combineDateWithTime(date: string, timeSource: Date) {
 
 export function TransactionFormDialog() {
   const { form, closeForm, showToast } = useUi();
-  const { addTransaction, updateTransaction, setSelectedMonth } = useTransactions();
+  const { addTransaction, updateTransaction, selectedMonth, setSelectedMonth } = useTransactions();
   const editing = form?.mode === "edit" ? form.transaction : null;
 
   const [kind, setKind] = useState<Kind>("expense");
@@ -69,10 +70,8 @@ export function TransactionFormDialog() {
     try {
       if (editing) {
         await updateTransaction(editing.id, input);
-        showToast("Зміни збережено");
       } else {
         await addTransaction(input);
-        showToast(kind === "income" ? "Дохід додано" : "Витрату додано");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося зберегти");
@@ -80,7 +79,19 @@ export function TransactionFormDialog() {
     } finally {
       setSaving(false);
     }
-    setSelectedMonth(monthKey(input.spent_at));
+
+    const done = editing ? "Зміни збережено" : kind === "income" ? "Дохід додано" : "Витрату додано";
+    // Раніше запис заднім числом мовчки перемикав увесь застосунок на інший
+    // місяць. Тепер лишаємося, де були, і лише кажемо, куди потрапив запис.
+    const savedMonth = monthKey(input.spent_at);
+    if (savedMonth === selectedMonth) {
+      showToast(done);
+    } else {
+      showToast(`${done} — запис потрапив у ${formatMonth(savedMonth).toLowerCase()}`, {
+        label: "Перейти",
+        onClick: () => setSelectedMonth(savedMonth),
+      });
+    }
     closeForm();
   };
 

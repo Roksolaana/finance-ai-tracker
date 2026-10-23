@@ -7,7 +7,7 @@ import { CategoryIcon } from "./CategoryIcon";
 import { formatDate, formatDateTime, formatMoney, formatMonth } from "../lib/format";
 
 export function TransactionDetailsSheet() {
-  const { detailsId, closeDetails, openEditForm, openDetails, showToast } = useUi();
+  const { detailsId, closeDetails, openEditForm, openDetails, showToast, showError } = useUi();
   const { transactions, deleteTransaction, restoreTransaction } = useTransactions();
   const transaction = transactions.find((t) => t.id === detailsId);
 
@@ -28,12 +28,12 @@ export function TransactionDetailsSheet() {
         removed
           ? {
               label: "Повернути",
-              onClick: () => restoreTransaction(removed).catch(() => showToast("Не вдалося повернути транзакцію")),
+              onClick: () => restoreTransaction(removed).catch(() => showError("Не вдалося повернути транзакцію")),
             }
           : undefined,
       );
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Не вдалося видалити");
+      showError(err instanceof Error ? err.message : "Не вдалося видалити");
     }
   };
 

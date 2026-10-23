@@ -5,7 +5,8 @@ export const CHART = {
   expense: "#3B4726",
   olive: "#5A6B3A",
   grid: "#F0EDE2",
-  axis: "#80836F",
+  // Те саме, що --color-muted: Recharts не читає CSS-змінні в tick.fill.
+  axis: "#696C58",
 };
 
 export function formatMoney(value: number, { sign = false, decimals }: { sign?: boolean; decimals?: number } = {}) {

@@ -15,7 +15,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { AuthPage } from "./pages/AuthPage";
 
 function Shell() {
-  const { chatOpen } = useUi();
+  const { chatOpen, toggleChat } = useUi();
   const { loadError, reload } = useTransactions();
 
   return (
@@ -41,6 +41,9 @@ function Shell() {
       {/* Панель лишається змонтованою, лише ховається: інакше згортання
           стирало всю розмову, а відповідь на запит у польоті губилася. */}
       <AiChatPanel hidden={!chatOpen} />
+      {/* На вузькому вікні панель накладається поверх контенту, тож потрібен
+          фон, клік по якому її закриває. На широкому вона стоїть колонкою. */}
+      {chatOpen && <div onClick={toggleChat} className="fixed inset-0 z-20 bg-ink/20 xl:hidden" aria-hidden />}
 
       <TransactionFormDialog />
       <TransactionDetailsSheet />

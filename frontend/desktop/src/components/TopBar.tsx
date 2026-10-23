@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, MessageSquare, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Sparkles } from "lucide-react";
 import { monthKey, shiftMonth } from "@finance/shared";
 import { useTransactions } from "../context/TransactionsContext";
 import { useUi } from "../context/UiContext";
@@ -13,7 +13,7 @@ export function MonthPicker() {
     <div className="flex items-center gap-1 rounded-xl bg-surface p-1 shadow-card ring-1 ring-line-soft">
       <button
         onClick={() => setSelectedMonth(shiftMonth(selectedMonth, -1))}
-        className="btn-icon size-8"
+        className="btn-icon size-11"
         aria-label="Попередній місяць"
       >
         <ChevronLeft size={17} />
@@ -22,19 +22,20 @@ export function MonthPicker() {
       <button
         onClick={() => setSelectedMonth(shiftMonth(selectedMonth, 1))}
         disabled={isCurrent}
-        className="btn-icon size-8 disabled:pointer-events-none disabled:opacity-30"
+        className="btn-icon size-11 disabled:pointer-events-none disabled:opacity-30"
         aria-label="Наступний місяць"
       >
         <ChevronRight size={17} />
       </button>
-      {!isCurrent && (
-        <button
-          onClick={() => setSelectedMonth(current)}
-          className="ml-1 rounded-lg px-2.5 h-8 text-xs font-medium text-olive hover:bg-olive-tint"
-        >
-          Поточний
-        </button>
-      )}
+      {/* Кнопка є завжди, лише вимикається: коли вона зʼявлялася й зникала,
+          увесь рядок у шапці стрибав під курсором. */}
+      <button
+        onClick={() => setSelectedMonth(current)}
+        disabled={isCurrent}
+        className="ml-1 h-11 rounded-lg px-3 text-xs font-medium text-olive hover:bg-olive-tint disabled:pointer-events-none disabled:opacity-30"
+      >
+        Поточний
+      </button>
     </div>
   );
 }
@@ -56,13 +57,16 @@ export function TopBar({ title, subtitle, showMonthPicker = true }: TopBarProps)
       </div>
       <div className="flex shrink-0 items-center gap-2.5">
         {showMonthPicker && <MonthPicker />}
+        {/* З підписом, а не голою іконкою: панель тепер закрита за
+            замовчуванням, і асистента треба було вміти знайти. */}
         <button
           onClick={toggleChat}
-          className={`btn-icon size-10 ring-1 ${chatOpen ? "bg-olive-tint text-olive ring-olive-soft" : "bg-surface ring-line-soft"}`}
-          aria-label={chatOpen ? "Сховати асистента" : "Показати асистента"}
+          aria-pressed={chatOpen}
           title={chatOpen ? "Сховати асистента" : "Показати асистента"}
+          className={`btn-ghost ${chatOpen ? "border-olive-soft bg-olive-tint text-olive hover:bg-olive-tint" : ""}`}
         >
-          <MessageSquare size={17} />
+          <Sparkles size={16} />
+          Асистент
         </button>
         <button onClick={openAddForm} className="btn-primary">
           <Plus size={17} />

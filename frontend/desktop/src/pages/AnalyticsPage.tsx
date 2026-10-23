@@ -19,6 +19,7 @@ import {
   createStatsApi,
   filterByMonth,
   type MonthlyStats,
+  type TransactionCategory,
 } from "@finance/shared";
 import { useTransactions } from "../context/TransactionsContext";
 import { TopBar } from "../components/TopBar";
@@ -104,7 +105,17 @@ export function AnalyticsPage() {
   const stats = monthStats;
   const summaries = monthly.summaries.map((s) => ({ ...s, label: formatMonthShort(s.month) }));
   // Recharts очікує категорії окремими полями рядка, а бекенд віддає їх мапою.
-  const categoryRows = monthly.categories.map((r) => ({ label: formatMonthShort(r.month), ...r.amounts }));
+  // Категорію, якої немає в нашому списку, бекенд однаково рахує в підсумках,
+  // а стовпчика для неї не було — тому додаємо її суму до «інше», щоб висота
+  // стовпця збігалася з витратами за місяць.
+  const categoryRows = monthly.categories.map((r) => {
+    const amounts: Partial<Record<TransactionCategory, number>> = {};
+    for (const [key, value] of Object.entries(r.amounts)) {
+      const c = EXPENSE_CATEGORIES.includes(key as TransactionCategory) ? (key as TransactionCategory) : "інше";
+      amounts[c] = (amounts[c] ?? 0) + (value ?? 0);
+    }
+    return { label: formatMonthShort(r.month), ...amounts };
+  });
   const usedCategories = EXPENSE_CATEGORIES.filter((c) => categoryRows.some((r) => (r[c] ?? 0) > 0));
 
   const weekdays = stats.weekday.map((w) => ({ day: WEEKDAY_LABELS[w.weekday - 1], amount: w.amount }));
@@ -227,7 +238,7 @@ export function AnalyticsPage() {
           {topExpenses.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted">У цьому місяці витрат немає</p>
           ) : (
-            topExpenses.map((t) => <TransactionRow key={t.id} transaction={t} />)
+            topExpenses.map((t) => <TransactionRow key={t.id} transaction={t} showDate />)
           )}
         </div>
       </div>

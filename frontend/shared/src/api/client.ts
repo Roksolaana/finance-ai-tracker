@@ -19,23 +19,43 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
 }
 
-/** Витягує читабельний текст з відповіді FastAPI (HTTPException або 422-валідація). */
+const CYRILLIC = /[а-яіїєґ]/i;
+
+/**
+ * Витягує читабельний текст з відповіді FastAPI (HTTPException або 422-валідація).
+ *
+ * Людині показуємо не код і не id запису, а що сталося й що робити:
+ * «Помилка сервера (500)» чи «Транзакцію з id=3f2c… не знайдено» їй нічого
+ * не кажуть.
+ */
 async function describeError(res: Response): Promise<string> {
+  let detail: unknown;
   try {
-    const detail = (await res.json())?.detail;
-    if (typeof detail === "string") return detail;
-    if (Array.isArray(detail)) {
-      // Pydantic додає до власних помилок префікс "Value error, " — він тут зайвий.
-      const message = detail
-        .map((item) => String(item?.msg ?? "").replace(/^Value error, /, ""))
-        .filter(Boolean)
-        .join("; ");
-      if (message) return message;
-    }
+    detail = (await res.json())?.detail;
   } catch {
-    // тіло не JSON — лишаємо загальне повідомлення
+    // тіло не JSON — лишаються загальні повідомлення нижче
   }
-  return `Помилка сервера (${res.status})`;
+
+  if (res.status === 404) return "Запис не знайдено — можливо, його вже видалили";
+  // 502 — це провайдер LLM: перевищений ліміт, збій чи таймаут.
+  if (res.status === 502) {
+    return typeof detail === "string" && detail.includes("ліміт")
+      ? "Забагато запитів до асистента. Спробуйте за хвилину"
+      : "Асистент зараз не відповідає. Спробуйте трохи згодом";
+  }
+  if (res.status >= 500 && res.status !== 503) return "Щось пішло не так на сервері. Спробуйте ще раз";
+
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    // Pydantic додає до власних помилок префікс "Value error, " — він тут зайвий.
+    // Вбудовані повідомлення англійські; наші власні — українські.
+    const message = detail
+      .map((item) => String(item?.msg ?? "").replace(/^Value error, /, ""))
+      .filter((text) => CYRILLIC.test(text))
+      .join("; ");
+    return message || "Перевірте введені дані";
+  }
+  return "Не вдалося виконати дію. Спробуйте ще раз";
 }
 
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {

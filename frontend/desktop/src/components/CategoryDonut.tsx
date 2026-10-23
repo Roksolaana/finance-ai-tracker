@@ -1,4 +1,5 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { ChevronRight } from "lucide-react";
 import { CATEGORY_COLORS, type CategoryBreakdownEntry, type TransactionCategory } from "@finance/shared";
 import { CategoryIcon } from "./CategoryIcon";
 import { formatMoney } from "../lib/format";
@@ -12,7 +13,10 @@ interface CategoryDonutProps {
 export function CategoryDonut({ data, total, onSelectCategory }: CategoryDonutProps) {
   return (
     <div className="card h-full p-6">
-      <h3 className="card-title mb-5">Структура витрат</h3>
+      <h3 className="card-title">Структура витрат</h3>
+      {/* Легенда — головний шлях до відфільтрованого списку, але виглядала
+          як звичайний текст. Підказка й стрілки показують, що вона клікабельна. */}
+      <p className="mb-4 mt-1 text-xs text-muted">Натисніть на категорію, щоб побачити її записи</p>
       {data.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted">У цьому місяці витрат немає</p>
       ) : (
@@ -51,12 +55,14 @@ export function CategoryDonut({ data, total, onSelectCategory }: CategoryDonutPr
               <li key={entry.category}>
                 <button
                   onClick={() => onSelectCategory?.(entry.category)}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-surface-soft"
+                  title={`Показати записи «${entry.category}»`}
+                  className="group flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-olive-tint"
                 >
                   <CategoryIcon category={entry.category} size={28} />
                   <span className="min-w-0 flex-1 truncate text-sm capitalize text-ink-soft">{entry.category}</span>
                   <span className="whitespace-nowrap text-sm font-medium">{formatMoney(entry.amount)}</span>
                   <span className="w-9 shrink-0 text-right text-xs text-muted">{entry.percent}%</span>
+                  <ChevronRight size={15} className="shrink-0 text-muted transition-colors group-hover:text-olive" />
                 </button>
               </li>
             ))}
