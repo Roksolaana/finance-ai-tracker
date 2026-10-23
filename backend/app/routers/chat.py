@@ -14,16 +14,17 @@ import re
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
 from app.database import get_db
 from app.llm import LLMUnavailable, chat_completion, is_configured
-from app.models import User
-from app.schemas import ChatRequest, ChatResponse
+from app.models import ChatMessage, Transaction, User
+from app.schemas import ChatHistory, ChatRequest, ChatResponse
 from app.tools import HANDLERS, ToolArgumentError, ToolOutcome, system_prompt, tool_schemas
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,8 @@ async def chat(
     calls = first.get("tool_calls") or []
     if not calls:
         # Модель вирішила, що інструмент не потрібен (вітання, уточнення).
-        return _response(first.get("content") or "", None, [], started)
+        reply = _response(first.get("content") or "", None, [], started)
+        return await _remember(db, user.id, payload.message, reply)
 
     messages.append(first)
     # Модель може зробити кілька викликів за раз. Запамʼятовуємо перший
@@ -115,12 +117,109 @@ async def chat(
     except LLMUnavailable as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
-    return _response(
+    reply = _response(
         final.get("content") or "",
         (outcome_tool, outcome.kind) if outcome else None,
         seen_transactions,
         started,
     )
+    return await _remember(db, user.id, payload.message, reply)
+
+
+# Скільки останніх повідомлень віддаємо при відкритті чату.
+STORED_HISTORY_LIMIT = 100
+
+
+@router.get("/history", response_model=ChatHistory, summary="Збережена розмова")
+async def chat_history(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ChatHistory:
+    """Останні повідомлення розмови разом зі знайденими під ними записами."""
+    rows = (
+        await db.execute(
+            select(ChatMessage)
+            .where(ChatMessage.user_id == user.id)
+            .order_by(ChatMessage.created_at.desc())
+            .limit(STORED_HISTORY_LIMIT)
+        )
+    ).scalars().all()
+    rows = list(reversed(rows))
+
+    wanted = {
+        tid for row in rows if row.tool_call for tid in row.tool_call.get("matched_transaction_ids", [])
+    }
+    by_id = {}
+    if wanted:
+        found = await db.execute(
+            select(Transaction).where(
+                Transaction.user_id == user.id,
+                Transaction.id.in_([uuid.UUID(tid) for tid in wanted]),
+            )
+        )
+        by_id = {str(t.id): t for t in found.scalars().all()}
+
+    transactions = {}
+    for row in rows:
+        ids = row.tool_call.get("matched_transaction_ids", []) if row.tool_call else []
+        items = [by_id[tid] for tid in ids if tid in by_id]
+        if items:
+            transactions[str(row.id)] = items
+
+    return ChatHistory(
+        messages=[
+            {
+                "id": str(row.id),
+                "role": row.role,
+                "content": row.content,
+                "timestamp": row.created_at,
+                "tool_call": row.tool_call,
+            }
+            for row in rows
+        ],
+        transactions=transactions,
+    )
+
+
+@router.delete("/history", status_code=status.HTTP_204_NO_CONTENT, summary="Почати розмову заново")
+async def clear_chat_history(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    await db.execute(delete(ChatMessage).where(ChatMessage.user_id == user.id))
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+async def _remember(db: AsyncSession, user_id: uuid.UUID, question: str, reply: ChatResponse) -> ChatResponse:
+    """Зберігає запит і відповідь, щоб розмова пережила повторне відкриття.
+
+    Пишемо лише вдалу пару: якщо модель не відповіла, у історії не лишається
+    питання без відповіді.
+    """
+    answer = reply.message
+    # Обидва рядки пишуться в одній транзакції, а now() у ній однаковий —
+    # питання ставимо на мить раніше, щоб порядок у розмові не плутався.
+    db.add(
+        ChatMessage(
+            user_id=user_id,
+            role="user",
+            content=question,
+            created_at=answer.timestamp - timedelta(milliseconds=1),
+        )
+    )
+    db.add(
+        ChatMessage(
+            id=uuid.UUID(answer.id),
+            user_id=user_id,
+            role="assistant",
+            content=answer.content,
+            tool_call=answer.tool_call.model_dump() if answer.tool_call else None,
+            created_at=answer.timestamp,
+        )
+    )
+    await db.commit()
+    return reply
 
 
 _BOLD = re.compile(r"\*{1,3}(.+?)\*{1,3}", re.DOTALL)

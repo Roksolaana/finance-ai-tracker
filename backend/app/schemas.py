@@ -203,6 +203,23 @@ class ChatResponse(BaseModel):
     transactions: list[TransactionRead] = Field(default_factory=list)
 
 
+class ChatHistoryMessage(BaseModel):
+    """Збережене повідомлення розмови — і користувача, і асистента."""
+
+    id: str
+    role: Literal["user", "assistant"]
+    content: str
+    timestamp: datetime.datetime
+    tool_call: ToolCallInfo | None = None
+
+
+class ChatHistory(BaseModel):
+    messages: list[ChatHistoryMessage]
+    # Знайдені записи за id відповіді асистента — ті самі, що показувались
+    # одразу після відповіді. Видалені з того часу транзакції випадають.
+    transactions: dict[str, list[TransactionRead]] = Field(default_factory=dict)
+
+
 class CategoryBreakdownEntry(BaseModel):
     """Скільки витрачено в категорії та яка це частка всіх витрат."""
 

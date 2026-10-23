@@ -8,6 +8,12 @@ export interface ChatReply {
   transactions: Transaction[];
 }
 
+export interface ChatHistory {
+  messages: ChatMessage[];
+  /** Знайдені записи за id відповіді асистента. */
+  transactions: Record<string, Transaction[]>;
+}
+
 const HISTORY_LIMIT = 10;
 
 export function createChatApi(baseUrl: string = API_URL) {
@@ -29,6 +35,13 @@ export function createChatApi(baseUrl: string = API_URL) {
           history: history.slice(-HISTORY_LIMIT).map(({ role, content }) => ({ role, content })),
         }),
       });
+    },
+    /** Розмова зберігається на сервері — однакова на ноутбуці й телефоні. */
+    async history(): Promise<ChatHistory> {
+      return request<ChatHistory>(`${root}/history`);
+    },
+    async clearHistory(): Promise<void> {
+      await request<void>(`${root}/history`, { method: "DELETE" });
     },
   };
 }

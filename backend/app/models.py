@@ -1,11 +1,11 @@
-"""ORM-моделі — таблиці transactions (з підтримкою pgvector) та budgets."""
+"""ORM-моделі — таблиці transactions (з підтримкою pgvector), budgets і chat_messages."""
 
 import datetime
 import uuid
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -170,3 +170,37 @@ class Budget(Base):
 
     def __repr__(self) -> str:
         return f"<Budget(category={self.category!r}, monthly_limit={self.monthly_limit})>"
+
+
+class ChatMessage(Base):
+    """Повідомлення розмови з асистентом.
+
+    Історія живе на сервері, щоб не губитися при повторному відкритті чату
+    й бути однаковою на всіх пристроях користувача.
+    """
+
+    __tablename__ = "chat_messages"
+    __table_args__ = (Index("ix_chat_messages_user_created", "user_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=func.gen_random_uuid(),
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # Який інструмент дав відповідь і які записи знайдено (лише для асистента).
+    tool_call: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ChatMessage(role={self.role!r}, content={self.content[:30]!r})>"

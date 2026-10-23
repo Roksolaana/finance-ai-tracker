@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.database import JwtSecretNotPersisted, engine, ensure_jwt_secret
+from app.embeddings import embed_one
 from app.migrate import upgrade_to_head
 from app.routers import auth, budgets, chat, stats, transactions
 
@@ -42,7 +43,11 @@ async def lifespan(app: FastAPI):
         # інтерфейс завантажиться й покаже помилку зʼєднання з кнопкою повтору.
         # Інакше не віддавався б навіть статичний фронтенд.
         logger.exception("Не вдалося застосувати міграції — працюємо без бази даних")
+    # Модель ембедингів вантажиться ~3 с. Без прогріву це платив перший запит
+    # на додавання транзакції. Не чекаємо: сервер має відповідати одразу.
+    warmup = asyncio.create_task(asyncio.to_thread(embed_one, "прогрів"))
     yield
+    warmup.cancel()
     await engine.dispose()
 
 

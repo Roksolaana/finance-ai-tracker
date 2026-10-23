@@ -8,3 +8,4 @@ export * from "./api/budgets";
 export * from "./api/stats";
 export * from "./api/chat";
 export * from "./chat-intro";
+export * from "./route-info";
