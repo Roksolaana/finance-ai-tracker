@@ -59,7 +59,7 @@ const statsApi = createStatsApi("/api/v1");
 const MONTHS_IN_WINDOW = 6;
 
 export function AnalyticsPage() {
-  const { transactions, selectedMonth, monthStats, statsFailed, dataVersion, reload } = useTransactions();
+  const { transactions, selectedMonth, monthStats, statsStale, statsFailed, dataVersion, reload } = useTransactions();
   const [monthly, setMonthly] = useState<MonthlyStats | null>(null);
   const [monthlyFailed, setMonthlyFailed] = useState(false);
 
@@ -136,7 +136,10 @@ export function AnalyticsPage() {
     <>
       <TopBar title="Аналітика" subtitle={`Пів року до ${formatMonthGenitive(selectedMonth)} включно`} />
 
-      <div className="space-y-5">
+      <div
+        aria-busy={statsStale || monthly.summaries[monthly.summaries.length - 1]?.month !== selectedMonth}
+        className="stale-fade space-y-5"
+      >
         <div className="grid grid-cols-2 gap-4 @2xl:grid-cols-4">
           <Insight
             icon={TrendingDown}

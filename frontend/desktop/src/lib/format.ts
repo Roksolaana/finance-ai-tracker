@@ -73,3 +73,8 @@ export function formatPercent(value: number | null) {
   const rounded = Math.round(value * 10) / 10;
   return `${rounded > 0 ? "+" : ""}${rounded.toLocaleString("uk-UA")}%`;
 }
+
+/** Сума й знак валюти окремо — щоб «₴» можна було набрати іншим кольором. */
+export function splitMoney(value: number, options?: { sign?: boolean }): [string, string] {
+  return [formatMoney(value, options).replace(/ ₴$/, ""), "₴"];
+}

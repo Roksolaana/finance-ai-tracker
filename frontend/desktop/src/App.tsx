@@ -1,5 +1,5 @@
 import { Route, Routes } from "react-router-dom";
-import { Sidebar } from "./components/Sidebar";
+import { AppHeader } from "./components/TopBar";
 import { AiChatPanel } from "./components/AiChatPanel";
 import { TransactionFormDialog } from "./components/TransactionFormDialog";
 import { TransactionDetailsSheet } from "./components/TransactionDetailsSheet";
@@ -20,11 +20,11 @@ function Shell() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <main className="@container flex-1 overflow-y-auto px-7 py-6">
-        <div className="mx-auto max-w-6xl">
+      <main className="@container flex-1 overflow-y-auto px-8 py-6">
+        <div className="mx-auto max-w-[1560px]">
+          <AppHeader />
           {loadError && (
-            <div className="mb-4 flex items-center justify-between rounded-xl bg-gold-tint px-4 py-3 text-sm text-gold">
+            <div className="mb-4 flex items-center justify-between rounded-2xl bg-gold-tint px-4 py-3 text-sm text-gold">
               <span>{loadError}. Дані можуть бути неактуальними.</span>
               <button onClick={reload} className="font-medium underline">
                 Спробувати знову

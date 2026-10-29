@@ -33,8 +33,8 @@ export function CategoryIcon({ category, size = 36 }: { category: TransactionCat
   const color = CATEGORY_COLORS[category] ?? CATEGORY_COLORS["інше"];
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center rounded-xl"
-      style={{ width: size, height: size, background: `${color}1A`, color }}
+      className="inline-flex shrink-0 items-center justify-center rounded-[32%]"
+      style={{ width: size, height: size, background: `${color}17`, color }}
     >
       <Icon size={size * 0.47} strokeWidth={1.9} />
     </span>

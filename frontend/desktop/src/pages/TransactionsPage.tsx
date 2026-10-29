@@ -67,9 +67,8 @@ export function TransactionsPage() {
     <>
       <TopBar
         title="Транзакції"
-        // Місяць і так видно в перемикачі поруч — підзаголовок лише для всієї історії.
+        // Місяць і так видно в перемикачі в шапці — підзаголовок лише для всієї історії.
         subtitle={allTime ? "Уся історія" : undefined}
-        showMonthPicker={!allTime}
       />
 
       <div className="card mb-5 p-4">

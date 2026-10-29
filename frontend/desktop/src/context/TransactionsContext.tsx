@@ -14,8 +14,10 @@ export type { TransactionInput };
 
 interface TransactionsContextValue {
   transactions: Transaction[];
-  /** Агрегати за вибраний місяць із `GET /stats/month`; null, поки вантажиться. */
+  /** Агрегати з `GET /stats/month`; null лише до першої відповіді. */
   monthStats: MonthStats | null;
+  /** monthStats ще за попередній місяць: новий вантажиться, цифри треба приглушити. */
+  statsStale: boolean;
   loadError: string | null;
   statsFailed: boolean;
   /** Росте з кожною зміною даних — щоб сторінки могли перезапитати свої агрегати. */
@@ -112,20 +114,11 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
     };
   }, [reload]);
 
-  // Місяць, для якого зараз лежать цифри в monthStats.
-  const statsMonthRef = useRef(selectedMonth);
-
   useEffect(() => {
     let cancelled = false;
-    // Скидаємо лише при перемиканні місяця: інакше на екрані лишалися б цифри
-    // попереднього під новим заголовком. Під час звичайного оновлення даних
-    // старі цифри лишаються до приходу нових — якщо скидати й тоді, дашборд
-    // блимав заглушкою «Завантаження…» на кожен фокус вікна і кожне
-    // збереження, а прокрутка стрибала нагору.
-    if (statsMonthRef.current !== selectedMonth) {
-      statsMonthRef.current = selectedMonth;
-      setMonthStats(null);
-    }
+    // Старі цифри не скидаємо навіть при перемиканні місяця: тоді вся сторінка
+    // на мить підмінялася заглушкою «Завантаження…» і блимала. Поки нові
+    // не прийшли, сторінки приглушують старі за statsStale.
     setStatsError(null);
     statsApi
       .month(selectedMonth)
@@ -161,6 +154,7 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
     () => ({
       transactions: [...transactions].sort(bySpentAtDesc),
       monthStats,
+      statsStale: monthStats !== null && monthStats.month !== selectedMonth,
       loadError: listError ?? statsError,
       statsFailed: statsError !== null,
       dataVersion,

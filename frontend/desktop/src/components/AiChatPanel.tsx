@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, Database, Info, Layers, RotateCcw, Search, Sparkles, X } from "lucide-react";
+import { ArrowUp, Info, RotateCcw, Sparkles, X } from "lucide-react";
 import {
-  NO_TOOL_INFO,
-  ROUTE_INFO,
   createChatApi,
   chatGreeting,
+  quickChips,
   quickPrompts,
   type ChatMessage,
-  type ToolKind,
   type Transaction,
 } from "@finance/shared";
 import { useUi } from "../context/UiContext";
@@ -28,52 +26,18 @@ function localId(): string {
 // Та сама межа, що й у класах max-xl:/xl: (80rem): нижче панель — накладка.
 const WIDE_LAYOUT = "(min-width: 80rem)";
 
-const ROUTE_ICONS: Record<ToolKind, typeof Database> = {
-  sql: Database,
-  rag: Search,
-  hybrid: Layers,
-};
-
-// Як отримано відповідь — відкривається кнопкою «i», щоб не заважати читати.
-function HowAnswered({ message, foundCount }: { message: ChatMessage; foundCount: number }) {
-  const call = message.tool_call;
-  if (!call) {
-    return <p className="mt-2 max-w-[92%] rounded-xl bg-olive-tint px-3 py-2.5 text-xs text-olive-deep">{NO_TOOL_INFO}</p>;
-  }
-  const route = ROUTE_INFO[call.kind] ?? ROUTE_INFO.sql;
-  const Icon = ROUTE_ICONS[call.kind] ?? Database;
-  return (
-    <div className="mt-2 max-w-[92%] space-y-1 rounded-xl bg-olive-tint px-3 py-2.5 text-xs text-olive-deep">
-      <p className="flex items-center gap-1.5 font-semibold">
-        <Icon size={13} />
-        {route.title}
-      </p>
-      <ol className="list-decimal space-y-0.5 pl-4 leading-relaxed">
-        {route.steps.map((step) => (
-          <li key={step}>{step}</li>
-        ))}
-      </ol>
-      <p className="pt-1 text-[11px] text-olive">
-        {call.name} · {(call.duration_ms / 1000).toFixed(1)} с · записів: {foundCount}
-      </p>
-    </div>
-  );
-}
-
 function FoundTransactions({ items }: { items: Transaction[] }) {
   return (
-    <div className="mt-2 space-y-1.5 rounded-xl border border-dashed border-line p-2.5">
-      <p className="px-0.5 text-[11px] font-medium uppercase tracking-wider text-muted">
-        Знайдені записи ({items.length})
-      </p>
+    <div className="mt-2 w-[92%] space-y-2 rounded-2xl border border-dashed border-line p-3.5">
+      <p className="eyebrow px-0.5 text-muted">Знайдені записи · {items.length}</p>
       {items.slice(0, 5).map((t) => (
-        <div key={t.id} className="flex items-center gap-2 text-xs">
-          <CategoryIcon category={t.category} size={22} />
+        <div key={t.id} className="flex items-center gap-2.5 text-[13px]">
+          <CategoryIcon category={t.category} size={28} />
           <span className="min-w-0 flex-1 truncate text-ink-soft">{t.note ?? t.category}</span>
-          <span className="shrink-0 font-medium">{formatMoney(t.amount)}</span>
+          <span className="shrink-0 font-mono font-medium">{formatMoney(t.amount)}</span>
         </div>
       ))}
-      {items.length > 5 && <p className="px-0.5 text-[11px] text-muted">…і ще {items.length - 5}</p>}
+      {items.length > 5 && <p className="px-0.5 text-xs text-muted">…і ще {items.length - 5}</p>}
     </div>
   );
 }
@@ -82,7 +46,6 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
   const { toggleChat } = useUi();
   const [messages, setMessages] = useState<ChatMessage[]>(chatGreeting);
   const [found, setFound] = useState<Record<string, Transaction[]>>({});
-  const [opened, setOpened] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -218,93 +181,86 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
     }
   };
 
+  const promptsDisabled = !canSend;
+
   return (
-    // Нижче 1280px колонка 360px стискала дашборд до половини вікна,
+    // Нижче 1280px колонка стискала дашборд до половини вікна,
     // тому там панель стає накладкою справа.
     <aside
       ref={panelRef}
       tabIndex={-1}
       aria-label="AI-асистент"
       hidden={hidden}
-      className="card flex w-[360px] shrink-0 flex-col overflow-hidden outline-none max-xl:fixed max-xl:inset-y-3 max-xl:right-3 max-xl:z-30 max-xl:shadow-pop xl:my-4 xl:mr-4"
+      className="flex w-[420px] shrink-0 flex-col overflow-hidden border-l border-line-soft bg-surface-soft outline-none max-xl:fixed max-xl:inset-y-0 max-xl:right-0 max-xl:z-30 max-xl:shadow-pop"
     >
-      <div className="flex items-center justify-between border-b border-line-soft px-5 py-4">
-        <div className="flex items-center gap-2.5">
-          <span className="inline-flex size-8 items-center justify-center rounded-xl bg-olive-tint text-olive">
-            <Sparkles size={16} />
+      <div className="flex items-center justify-between gap-3 border-b border-line-soft px-6 py-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-2xl bg-night text-olive-soft">
+            <Sparkles size={20} />
           </span>
-          <p className="text-sm font-semibold leading-tight">AI-асистент</p>
+          <div className="min-w-0">
+            <p className="font-display text-lg font-semibold leading-tight">Асистент</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-soft">
+              <span className={`size-2 shrink-0 rounded-full ${enabled === false ? "bg-gold" : "bg-positive"}`} />
+              відповідає лише за вашими записами
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-1">
           {messages.length > chatGreeting.length && (
             <button
               onClick={restart}
               disabled={sending}
-              className="btn-icon size-8"
+              className="btn-icon size-10"
               aria-label="Почати розмову заново"
               title="Почати розмову заново"
             >
-              <RotateCcw size={15} />
+              <RotateCcw size={17} />
             </button>
           )}
-          <button onClick={toggleChat} className="btn-icon size-8" aria-label="Сховати асистента">
-            <X size={16} />
+          <button onClick={toggleChat} className="btn-icon size-10" aria-label="Сховати асистента">
+            <X size={18} />
           </button>
         </div>
       </div>
 
       <div role="log" aria-live="polite" className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={message.role === "user" ? "flex justify-end" : "flex flex-col items-start"}
-          >
+        {messages.map((message) => {
+          return (
             <div
-              className={
-                message.role === "user"
-                  ? "max-w-[92%] whitespace-pre-line rounded-2xl rounded-br-md bg-olive px-4 py-2.5 text-sm leading-relaxed text-white"
-                  : "max-w-[92%] whitespace-pre-line rounded-2xl rounded-bl-md bg-surface-soft px-4 py-3 text-sm leading-relaxed text-ink-soft ring-1 ring-line-soft"
-              }
+              key={message.id}
+              className={message.role === "user" ? "flex justify-end" : "flex flex-col items-start"}
             >
-              {message.content}
-            </div>
-            {message.role === "assistant" && !chatGreeting.some((m) => m.id === message.id) && (
-              <button
-                onClick={() => setOpened((current) => (current === message.id ? null : message.id))}
-                aria-label="Як отримано відповідь"
-                aria-expanded={opened === message.id}
-                title="Як отримано відповідь"
-                className={`mt-1.5 inline-flex size-5 items-center justify-center rounded-full border text-[11px] font-bold italic transition-colors ${
-                  opened === message.id
-                    ? "border-olive bg-olive text-white"
-                    : "border-line text-muted hover:border-olive-soft hover:text-ink"
-                }`}
+              <div
+                className={
+                  message.role === "user"
+                    ? "max-w-[88%] whitespace-pre-line rounded-3xl rounded-br-lg bg-night px-4.5 py-3 text-sm leading-relaxed text-white"
+                    : "max-w-[92%] whitespace-pre-line rounded-3xl rounded-bl-lg bg-surface px-4.5 py-3.5 text-sm leading-relaxed text-ink shadow-card ring-1 ring-line-soft"
+                }
               >
-                i
-              </button>
-            )}
-            {opened === message.id && (
-              <HowAnswered message={message} foundCount={found[message.id]?.length ?? 0} />
-            )}
-            {found[message.id] && <FoundTransactions items={found[message.id]} />}
-          </div>
-        ))}
+                {message.content}
+              </div>
+              {found[message.id] && <FoundTransactions items={found[message.id]} />}
+            </div>
+          );
+        })}
 
         {sending && (
-          <p className="text-xs text-muted" role="status">
+          <p className="flex items-center gap-2 px-1 text-xs text-muted" role="status">
+            <span className="size-1.5 animate-pulse rounded-full bg-olive" />
             Асистент шукає відповідь…
           </p>
         )}
 
         {messages.length === chatGreeting.length && !sending && (
           <div className="space-y-2 pt-2">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Приклади запитів</p>
+            <p className="eyebrow text-muted">Приклади запитів</p>
             {quickPrompts.map((prompt) => (
               <button
                 key={prompt}
                 onClick={() => send(prompt)}
-                disabled={!canSend}
-                className="block w-full rounded-xl border border-dashed border-line px-3.5 py-2.5 text-left text-xs text-muted transition-colors hover:border-olive-soft hover:text-ink disabled:pointer-events-none disabled:opacity-60"
+                disabled={promptsDisabled}
+                className="block w-full cursor-pointer rounded-2xl border border-dashed border-line px-4 py-3 text-left text-sm text-ink-soft transition-colors hover:border-olive-soft hover:text-ink disabled:pointer-events-none disabled:opacity-60"
               >
                 {prompt}
               </button>
@@ -314,9 +270,9 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t border-line-soft p-4">
+      <div className="border-t border-line-soft px-5 pb-5 pt-4">
         {enabled === false && (
-          <div className="mb-3 flex gap-2 rounded-xl bg-gold-tint px-3 py-2.5 text-xs text-gold">
+          <div className="mb-3 flex gap-2 rounded-2xl bg-gold-tint px-3.5 py-3 text-xs text-gold">
             <Info size={15} className="mt-px shrink-0" />
             {statusFailed
               ? "Не вдалося звʼязатися із сервером. Асистент тимчасово недоступний."
@@ -324,7 +280,7 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
           </div>
         )}
         {historyFailed && (
-          <p className="mb-3 flex items-center justify-between gap-2 rounded-xl bg-gold-tint px-3 py-2.5 text-xs text-gold">
+          <p className="mb-3 flex items-center justify-between gap-2 rounded-2xl bg-gold-tint px-3.5 py-3 text-xs text-gold">
             Не вдалося завантажити попередню розмову.
             <button type="button" onClick={loadHistory} className="shrink-0 font-medium underline">
               Спробувати знову
@@ -332,16 +288,31 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
           </p>
         )}
         {error && (
-          <p role="alert" className="mb-3 rounded-xl bg-negative-tint px-3 py-2.5 text-xs text-negative">
+          <p role="alert" className="mb-3 rounded-2xl bg-negative-tint px-3.5 py-3 text-xs text-negative">
             {error}
           </p>
+        )}
+        {/* Короткі підказки лишаються й посеред розмови, а не лише на початку. */}
+        {messages.length > chatGreeting.length && !sending && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {quickChips.map((chip) => (
+              <button
+                key={chip}
+                onClick={() => send(chip)}
+                disabled={promptsDisabled}
+                className="cursor-pointer rounded-xl border border-line bg-surface px-3.5 py-2 text-[13px] text-ink transition-colors hover:border-olive-soft disabled:pointer-events-none disabled:opacity-60"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
         )}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             send(input);
           }}
-          className="flex items-center gap-2 rounded-2xl border border-line bg-surface-soft p-1.5 pl-3.5"
+          className="flex items-center gap-2 rounded-2xl border border-line bg-surface p-1.5 pl-4 shadow-card"
         >
           <label htmlFor="chat-input" className="sr-only">
             Запит до AI-асистента
@@ -353,16 +324,16 @@ export function AiChatPanel({ hidden = false }: { hidden?: boolean }) {
             onChange={(e) => setInput(e.target.value)}
             disabled={!canSend}
             maxLength={1000}
-            placeholder={historyLoaded ? "Запитайте про свої витрати…" : "Завантаження розмови…"}
-            className="h-9 flex-1 bg-transparent text-sm outline-none placeholder:text-muted disabled:cursor-not-allowed"
+            placeholder={historyLoaded ? "Запитайте про свої гроші…" : "Завантаження розмови…"}
+            className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted disabled:cursor-not-allowed"
           />
           <button
             type="submit"
             disabled={!canSend || !input.trim()}
             aria-label="Надіслати"
-            className="inline-flex size-9 items-center justify-center rounded-xl bg-olive text-white transition-colors hover:bg-olive-deep disabled:bg-line disabled:text-muted"
+            className="inline-flex size-11 items-center justify-center rounded-xl bg-olive text-white transition-colors hover:bg-olive-deep disabled:bg-line disabled:text-muted"
           >
-            <ArrowUp size={17} />
+            <ArrowUp size={18} />
           </button>
         </form>
       </div>

@@ -1,8 +1,17 @@
 import { useState } from "react";
-import { Sprout } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { KronaMark, TreeRings } from "../components/Rings";
 
 type Mode = "login" | "register";
+
+// Рівні кільця тут — лише образ: справжні з'являються на огляді з даними.
+const DEMO_RINGS = [3, 5, 4, 7, 6, 9];
+
+const FEATURES = [
+  { title: "Облік за хвилину", text: "Сума, категорія, нотатка — і запис уже в статистиці." },
+  { title: "Асистент, що не вигадує", text: "Питайте своїми словами — відповідь спирається лише на ваші записи." },
+  { title: "Ліміти без сюрпризів", text: "Видно, скільки лишилось, ще до того, як ліміт перевищено." },
+];
 
 export function AuthPage() {
   const { login, register } = useAuth();
@@ -41,30 +50,75 @@ export function AuthPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-10">
-      <div className="w-full max-w-sm">
-        <div className="mb-7 flex flex-col items-center text-center">
-          <span className="mb-3 inline-flex size-12 items-center justify-center rounded-2xl bg-olive text-white shadow-[0_6px_16px_-8px_rgb(59_71_38/0.8)]">
-            <Sprout size={24} strokeWidth={2} />
-          </span>
-          <h1 className="font-display text-2xl font-semibold tracking-tight">Крона</h1>
-          <p className="mt-1 text-sm text-muted">Облік особистих фінансів</p>
+    <div className="flex min-h-screen gap-4 p-4">
+      <aside className="relative hidden w-[46%] max-w-[640px] flex-col overflow-hidden rounded-[32px] bg-forest p-10 text-white shadow-card lg:flex">
+        <TreeRings nets={DEMO_RINGS} size={520} className="pointer-events-none absolute -right-36 -top-36 opacity-90" />
+
+        <div className="relative flex items-center gap-3">
+          <KronaMark size={44} />
+          <span className="font-display text-xl font-semibold tracking-tight">Крона</span>
         </div>
 
-        <div className="card p-7">
-          <div className="segmented mb-6 w-full [&>button]:flex-1">
-            <button type="button" data-active={!isRegister} aria-pressed={!isRegister} onClick={() => switchMode("login")}>
-              Вхід
-            </button>
-            <button type="button" data-active={isRegister} aria-pressed={isRegister} onClick={() => switchMode("register")}>
-              Реєстрація
-            </button>
+        <div className="relative mt-auto max-w-md pb-4">
+          <p className="eyebrow text-olive-soft">Облік особистих фінансів</p>
+          <h2 className="mt-3 font-display text-[40px] font-semibold leading-[1.08] tracking-tight">
+            Гроші, що ростуть кільцями
+          </h2>
+          <p className="mt-4 text-[15px] leading-relaxed text-white/75">
+            Кожен місяць, коли вдалося відкласти, — ще одне кільце, як у дерева.
+          </p>
+
+          <ul className="mt-9 space-y-4">
+            {FEATURES.map((f, i) => (
+              <li key={f.title} className="flex gap-4">
+                <span className="mt-0.5 font-mono text-xs text-olive-soft">0{i + 1}</span>
+                <div>
+                  <p className="text-sm font-semibold">{f.title}</p>
+                  <p className="mt-0.5 text-sm text-white/65">{f.text}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </aside>
+
+      <main className="flex flex-1 items-center justify-center px-4 py-10">
+        <div className="w-full max-w-[400px]">
+          <div className="mb-8 flex items-center gap-3 lg:hidden">
+            <KronaMark size={44} />
+            <span className="font-display text-xl font-semibold tracking-tight">Крона</span>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <p className="eyebrow text-muted">{isRegister ? "Новий акаунт" : "З поверненням"}</p>
+          <h1 className="mt-2 font-display text-[32px] font-semibold leading-tight tracking-tight">
+            {isRegister ? "Посадімо ваше дерево" : "Увійдіть у Крону"}
+          </h1>
+          <p className="mt-2 text-sm text-ink-soft">
+            {isRegister
+              ? "Кілька секунд — і можна додавати перші витрати."
+              : "Ваші записи, ліміти й розмова з асистентом чекають."}
+          </p>
+
+          <div className="mt-7 flex rounded-2xl bg-surface p-1 shadow-card ring-1 ring-line-soft">
+            {(["login", "register"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={mode === m}
+                onClick={() => switchMode(m)}
+                className={`h-10 flex-1 cursor-pointer rounded-xl text-sm font-medium transition-colors ${
+                  mode === m ? "bg-night text-white shadow-sm" : "text-ink-soft hover:text-ink"
+                }`}
+              >
+                {m === "login" ? "Вхід" : "Реєстрація"}
+              </button>
+            ))}
+          </div>
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             {isRegister && (
               <div>
-                <label htmlFor="auth-name" className="label">
+                <label htmlFor="auth-name" className="eyebrow mb-2 block text-muted">
                   Ваше імʼя
                 </label>
                 <input
@@ -75,13 +129,13 @@ export function AuthPage() {
                   maxLength={100}
                   autoComplete="name"
                   placeholder="Роксолана"
-                  className="input mt-1.5"
+                  className="input h-12 rounded-2xl px-4 text-[15px]"
                 />
               </div>
             )}
 
             <div>
-              <label htmlFor="auth-email" className="label">
+              <label htmlFor="auth-email" className="eyebrow mb-2 block text-muted">
                 Email
               </label>
               <input
@@ -92,12 +146,12 @@ export function AuthPage() {
                 required
                 autoComplete="email"
                 placeholder="you@example.com"
-                className="input mt-1.5"
+                className="input h-12 rounded-2xl px-4 text-[15px]"
               />
             </div>
 
             <div>
-              <label htmlFor="auth-password" className="label">
+              <label htmlFor="auth-password" className="eyebrow mb-2 block text-muted">
                 Пароль
               </label>
               <input
@@ -109,32 +163,32 @@ export function AuthPage() {
                 minLength={isRegister ? 8 : undefined}
                 autoComplete={isRegister ? "new-password" : "current-password"}
                 placeholder={isRegister ? "щонайменше 8 символів" : "••••••••"}
-                className="input mt-1.5"
+                className="input h-12 rounded-2xl px-4 text-[15px]"
               />
             </div>
 
             {error && (
-              <p role="alert" className="rounded-xl bg-negative-tint px-3.5 py-2.5 text-sm text-negative">
+              <p role="alert" className="rounded-2xl bg-negative-tint px-4 py-3 text-sm text-negative">
                 {error}
               </p>
             )}
 
-            <button type="submit" disabled={busy} className="btn-primary w-full disabled:opacity-60">
+            <button type="submit" disabled={busy} className="btn-primary h-12 w-full rounded-2xl text-[15px] disabled:opacity-60">
               {busy ? "Хвилинку…" : isRegister ? "Створити акаунт" : "Увійти"}
             </button>
           </form>
-        </div>
 
-        <p className="mt-5 text-center text-xs text-muted">
-          {isRegister ? "Уже маєте акаунт?" : "Ще не маєте акаунта?"}{" "}
-          <button
-            onClick={() => switchMode(isRegister ? "login" : "register")}
-            className="font-medium text-olive underline hover:text-olive-deep"
-          >
-            {isRegister ? "Увійти" : "Зареєструватися"}
-          </button>
-        </p>
-      </div>
+          <p className="mt-6 text-center text-sm text-muted">
+            {isRegister ? "Уже маєте акаунт?" : "Ще не маєте акаунта?"}{" "}
+            <button
+              onClick={() => switchMode(isRegister ? "login" : "register")}
+              className="cursor-pointer font-semibold text-olive underline-offset-4 hover:underline"
+            >
+              {isRegister ? "Увійти" : "Зареєструватися"}
+            </button>
+          </p>
+        </div>
+      </main>
     </div>
   );
 }

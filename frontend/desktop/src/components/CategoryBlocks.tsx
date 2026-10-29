@@ -1,73 +1,63 @@
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { ChevronRight } from "lucide-react";
 import { CATEGORY_COLORS, type CategoryBreakdownEntry, type TransactionCategory } from "@finance/shared";
-import { CategoryIcon } from "./CategoryIcon";
 import { formatMoney } from "../lib/format";
 
-interface CategoryDonutProps {
+interface CategoryBlocksProps {
   data: CategoryBreakdownEntry[];
   total: number;
   onSelectCategory?: (category: TransactionCategory) => void;
 }
 
-export function CategoryDonut({ data, total, onSelectCategory }: CategoryDonutProps) {
+const colorOf = (category: TransactionCategory) => CATEGORY_COLORS[category] ?? CATEGORY_COLORS["інше"];
+
+/** Структура витрат брусками: ширина бруска — частка категорії. */
+export function CategoryBlocks({ data, total, onSelectCategory }: CategoryBlocksProps) {
   return (
-    <div className="card h-full p-6">
-      <h3 className="card-title">Структура витрат</h3>
-      {/* Легенда — головний шлях до відфільтрованого списку, але виглядала
-          як звичайний текст. Підказка й стрілки показують, що вона клікабельна. */}
-      <p className="mb-4 mt-1 text-xs text-muted">Натисніть на категорію, щоб побачити її записи</p>
+    <div className="card p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="card-title">Куди пішли гроші</h3>
+          {/* Легенда — головний шлях до відфільтрованого списку, тож прямо
+              кажемо, що категорії клікабельні. */}
+          <p className="mt-1 text-xs text-ink-soft">Натисніть на категорію, щоб побачити її записи</p>
+        </div>
+        <p className="whitespace-nowrap font-display text-[22px] font-semibold tracking-tight">{formatMoney(total)}</p>
+      </div>
+
       {data.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted">У цьому місяці витрат немає</p>
       ) : (
-        <div className="flex items-center gap-5">
-          <div className="relative size-36 shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={data}
-                  dataKey="amount"
-                  nameKey="category"
-                  innerRadius="72%"
-                  outerRadius="100%"
-                  paddingAngle={2}
-                  cornerRadius={4}
-                  stroke="none"
-                  isAnimationActive={false}
-                >
-                  {data.map((entry) => (
-                    <Cell key={entry.category} fill={CATEGORY_COLORS[entry.category] ?? CATEGORY_COLORS["інше"]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value, name) => [formatMoney(Number(value)), String(name)]}
-                  contentStyle={{ borderRadius: 12, border: "1px solid #E7E3D4", fontSize: 12 }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[11px] text-muted">усього</span>
-              <span className="text-lg font-semibold tracking-tight">{formatMoney(total)}</span>
-            </div>
+        <>
+          <div className="mt-5 flex h-12 gap-1.5">
+            {data.map((entry) => (
+              <button
+                key={entry.category}
+                onClick={() => onSelectCategory?.(entry.category)}
+                title={`${entry.category}: ${formatMoney(entry.amount)} (${entry.percent}%)`}
+                aria-label={`Показати записи «${entry.category}»`}
+                // Мінімальна ширина — щоб і 1% лишався помітним і клікабельним.
+                className="min-w-2.5 cursor-pointer rounded-xl transition-[filter,transform] hover:brightness-110 active:scale-[0.98]"
+                style={{ flexGrow: entry.amount, flexBasis: 0, background: colorOf(entry.category) }}
+              />
+            ))}
           </div>
-          <ul className="min-w-0 flex-1 space-y-0.5">
-            {data.slice(0, 6).map((entry) => (
+
+          <ul className="mt-4 grid grid-cols-1 gap-x-8 gap-y-1 @3xl:grid-cols-3 @6xl:grid-cols-4">
+            {data.map((entry) => (
               <li key={entry.category}>
                 <button
                   onClick={() => onSelectCategory?.(entry.category)}
                   title={`Показати записи «${entry.category}»`}
-                  className="group flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-olive-tint"
+                  className="flex w-full cursor-pointer items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors hover:bg-olive-tint"
                 >
-                  <CategoryIcon category={entry.category} size={28} />
-                  <span className="min-w-0 flex-1 truncate text-sm capitalize text-ink-soft">{entry.category}</span>
-                  <span className="whitespace-nowrap text-sm font-medium">{formatMoney(entry.amount)}</span>
-                  <span className="w-9 shrink-0 text-right text-xs text-muted">{entry.percent}%</span>
-                  <ChevronRight size={15} className="shrink-0 text-muted transition-colors group-hover:text-olive" />
+                  <span className="size-3 shrink-0 rounded-[4px]" style={{ background: colorOf(entry.category) }} />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium first-letter:uppercase">{entry.category}</span>
+                  <span className="whitespace-nowrap font-mono text-xs text-ink-soft">{formatMoney(entry.amount)}</span>
+                  <span className="w-8 shrink-0 text-right font-mono text-[11px] text-muted">{entry.percent}%</span>
                 </button>
               </li>
             ))}
           </ul>
-        </div>
+        </>
       )}
     </div>
   );
