@@ -25,6 +25,7 @@ TOOL_KIND = {
     "query_transactions": "sql",
     "semantic_search_notes": "rag",
     "hybrid_search_and_sum": "hybrid",
+    "check_budgets": "sql",
 }
 
 PACE_SECONDS = 2.5

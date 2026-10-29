@@ -5,6 +5,8 @@
   semantic_search_notes  — чистий RAG: пошук за змістом нотатки
   hybrid_search_and_sum  — RAG знаходить записи, SQL їх підсумовує
 
+І допоміжний SQL-інструмент check_budgets — витрати проти лімітів за місяць.
+
 Гібрид винесено окремим інструментом навмисно: якби модель сама складала
 знайдені суми, результат залежав би від її арифметики. Тут вона лише обирає
 набір записів, а суму рахує база.
@@ -19,9 +21,9 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import CATEGORIES, DATE_RANGE_ERROR
-from app.models import Transaction
+from app.models import Budget, Transaction
 from app.search import date_bounds, semantic_search
-from app.timeutils import TZ, in_date_range, local_today, period_end, previous_period
+from app.timeutils import TZ, in_date_range, local_midnight, local_today, next_month, period_end, previous_period
 
 ToolKind = Literal["sql", "rag", "hybrid"]
 
@@ -333,6 +335,76 @@ async def hybrid_search_and_sum(
     )
 
 
+async def check_budgets(db: AsyncSession, user_id: uuid.UUID, month: str | None = None) -> ToolOutcome:
+    """Витрати проти лімітів за місяць.
+
+    Без цього інструмента модель не бачила таблиці budgets і на «де я
+    перевищила ліміт?» чесно відповідала, що лімітів немає. Залишок і
+    перевищення рахує база — так само, як картка лімітів на дашборді.
+    """
+    if month:
+        try:
+            year, mon = (int(part) for part in month.split("-"))
+            first_day = datetime.date(year, mon, 1)
+        except ValueError:
+            raise ToolArgumentError(f"Не вдалося розібрати місяць «{month}». Потрібен формат YYYY-MM.") from None
+        if not in_date_range(first_day):
+            raise ToolArgumentError(f"{DATE_RANGE_ERROR}, отримано «{month}».")
+    else:
+        first_day = local_today().replace(day=1)
+    start = local_midnight(first_day)
+    end = local_midnight(datetime.date(*next_month(first_day.year, first_day.month), 1))
+
+    budgets = (
+        await db.execute(select(Budget).where(Budget.user_id == user_id).order_by(Budget.category))
+    ).scalars().all()
+    month_key = first_day.strftime("%Y-%m")
+    if not budgets:
+        return ToolOutcome("sql", {"month": month_key, "budgets": [], "note": "лімітів не встановлено"}, [])
+
+    spent = dict(
+        (
+            await db.execute(
+                select(Transaction.category, func.sum(-Transaction.amount))
+                .where(
+                    Transaction.user_id == user_id,
+                    Transaction.amount < 0,
+                    Transaction.spent_at >= start,
+                    Transaction.spent_at < end,
+                    Transaction.category.in_([b.category for b in budgets]),
+                )
+                .group_by(Transaction.category)
+            )
+        ).all()
+    )
+
+    rows = []
+    for budget in budgets:
+        limit = float(budget.monthly_limit)
+        used = float(spent.get(budget.category, 0))
+        rows.append(
+            {
+                "category": budget.category,
+                "limit": limit,
+                "spent": used,
+                "left": max(limit - used, 0.0),
+                "over_by": max(used - limit, 0.0),
+                "used_percent": round(used / limit * 100) if limit else None,
+            }
+        )
+    # Спершу перевищені, далі ті, що найближче до межі: саме про них і питають.
+    rows.sort(key=lambda r: (r["over_by"] == 0, -(r["used_percent"] or 0)))
+    return ToolOutcome(
+        "sql",
+        {
+            "month": month_key,
+            "budgets": rows,
+            "over_limit": [r["category"] for r in rows if r["over_by"] > 0],
+        },
+        [],
+    )
+
+
 def tool_schemas() -> list[dict[str, Any]]:
     """JSON-схеми інструментів для function calling.
 
@@ -427,6 +499,26 @@ def tool_schemas() -> list[dict[str, Any]]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "check_budgets",
+                "description": (
+                    "Місячні ліміти витрат за категоріями: скільки витрачено, скільки лишилось, "
+                    "де ліміт перевищено. Використовуй для питань про ліміти й бюджет."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "month": {
+                            "type": ["string", "null"],
+                            "description": "Місяць у форматі YYYY-MM; без нього — поточний",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
     ]
 
 
@@ -434,6 +526,7 @@ HANDLERS = {
     "query_transactions": query_transactions,
     "semantic_search_notes": semantic_search_notes,
     "hybrid_search_and_sum": hybrid_search_and_sum,
+    "check_budgets": check_budgets,
 }
 
 
@@ -472,6 +565,9 @@ def system_prompt() -> str:
         "нотатки в базі українські.\n"
         "- `category` вибирай лише зі списку дозволених значень. Якщо потрібної "
         "категорії немає, не вказуй її зовсім.\n"
+        "- Про ліміти й бюджет питай check_budgets, а не query_transactions: "
+        "ліміти лежать окремо від транзакцій. Якщо він повернув порожній "
+        "список, скажи, що лімітів ще не встановлено.\n"
         "- `sum` повертає витрати, доходи й різницю окремо. Бери те число, про "
         "яке питає користувач, і не складай їх між собою.\n"
         "- Грошові суми пиши у форматі «1 234 ₴», без копійок, якщо вони нульові.\n"

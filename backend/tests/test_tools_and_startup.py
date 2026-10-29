@@ -1,4 +1,4 @@
-"""Гібридний інструмент і поведінка старту при проблемах з базою."""
+"""Гібридний інструмент, ліміти для асистента й поведінка старту при проблемах з базою."""
 
 import datetime
 import uuid
@@ -10,9 +10,9 @@ from sqlalchemy import text
 from app import main
 from app.database import settings
 from app.migrate import DatabaseUnavailable, upgrade_to_head
-from app.models import Base, Transaction
+from app.models import Base, Budget, Transaction
 from app.search import SearchHit
-from app.tools import hybrid_search_and_sum
+from app.tools import ToolArgumentError, check_budgets, hybrid_search_and_sum
 
 OCTOBER = datetime.datetime(2026, 10, 10, 12, tzinfo=datetime.timezone.utc)
 
@@ -37,6 +37,42 @@ async def test_hybrid_counts_only_expenses(db, monkeypatch, alice):
     assert outcome.payload["count"] == 1
     assert outcome.payload["matched_notes"] == ["Косметика, щоб зняти стрес"]
     assert [t.id for t in outcome.transactions] == [stress.id]
+
+
+async def test_check_budgets_finds_overspent_category(db, alice, bob):
+    _, user_id = alice
+    owner = uuid.UUID(user_id)
+    _, bob_id = bob
+    september = datetime.datetime(2026, 9, 10, 12, tzinfo=datetime.timezone.utc)
+    db.add_all(
+        [
+            Budget(user_id=owner, category="кафе", monthly_limit=3000),
+            Budget(user_id=owner, category="їжа", monthly_limit=10000),
+            Transaction(user_id=owner, amount=-3280, category="кафе", spent_at=OCTOBER),
+            Transaction(user_id=owner, amount=-8740, category="їжа", spent_at=OCTOBER),
+            # Не мають потрапити в жовтень: інший місяць, дохід і чужий акаунт.
+            Transaction(user_id=owner, amount=-5000, category="кафе", spent_at=september),
+            Transaction(user_id=owner, amount=500, category="кафе", spent_at=OCTOBER),
+            Transaction(user_id=uuid.UUID(bob_id), amount=-9000, category="кафе", spent_at=OCTOBER),
+        ]
+    )
+    await db.commit()
+
+    outcome = await check_budgets(db, owner, "2026-10")
+
+    assert outcome.kind == "sql"
+    assert outcome.payload["over_limit"] == ["кафе"]
+    cafe, food = outcome.payload["budgets"]
+    assert cafe == {"category": "кафе", "limit": 3000, "spent": 3280, "left": 0, "over_by": 280, "used_percent": 109}
+    assert food["left"] == 1260 and food["over_by"] == 0
+
+
+async def test_check_budgets_without_limits(db, alice):
+    _, user_id = alice
+    outcome = await check_budgets(db, uuid.UUID(user_id), "2026-10")
+    assert outcome.payload["budgets"] == []
+    with pytest.raises(ToolArgumentError):
+        await check_budgets(db, uuid.UUID(user_id), "жовтень")
 
 
 def test_unreachable_database_is_reported_separately(monkeypatch):
