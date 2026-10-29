@@ -62,7 +62,7 @@ class Transaction(Base):
         category    — категорія витрати (їжа, транспорт, …)
         spent_at    — дата/час транзакції
         note        — коментар користувача (довільний текст)
-        embedding   — vector(384) для семантичного пошуку (all-MiniLM-L6-v2)
+        embedding   — vector(384) для семантичного пошуку (paraphrase-multilingual-MiniLM-L12-v2)
         created_at  — дата створення запису
     """
 
