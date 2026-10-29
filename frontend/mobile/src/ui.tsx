@@ -5,7 +5,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import type { Transaction } from "@finance/shared";
 import { categoryColor, categoryIcon, signedMoney, type IconName } from "@/format";
 import { useCanGoBack, useNav } from "@/navigation/context";
-import { theme } from "@/theme";
+import { fonts, theme } from "@/theme";
 
 /** Шапка сторінки. На вкладених сторінках сама показує кнопку «назад». */
 export function ScreenHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: ReactNode }) {
@@ -43,8 +43,8 @@ export function CategoryIcon({ category, size = 40 }: { category: string; size?:
       style={{
         width: size,
         height: size,
-        borderRadius: size / 2,
-        backgroundColor: `${color}1F`,
+        borderRadius: size * 0.32,
+        backgroundColor: `${color}17`,
         alignItems: "center",
         justifyContent: "center",
       }}
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   back: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 14,
     backgroundColor: theme.surface,
     alignItems: "center",
     justifyContent: "center",
@@ -202,20 +202,20 @@ const styles = StyleSheet.create({
     borderColor: theme.lineSoft,
   },
   headerText: { flex: 1 },
-  title: { fontSize: 22, fontWeight: "700", color: theme.ink },
+  title: { fontSize: 24, fontFamily: fonts.display, color: theme.ink, letterSpacing: -0.4 },
   subtitle: { fontSize: 13, color: theme.inkSoft, marginTop: 1 },
   pressed: { opacity: 0.75 },
-  card: { backgroundColor: theme.surface, borderRadius: 18, padding: 16 },
+  card: { backgroundColor: theme.surface, borderRadius: 24, padding: 18, borderWidth: 1, borderColor: theme.lineSoft },
   blockTitle: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 6 },
-  blockTitleText: { fontSize: 16, fontWeight: "700", color: theme.ink },
+  blockTitleText: { fontSize: 17, fontFamily: fonts.display, color: theme.ink },
   blockAction: { flexDirection: "row", alignItems: "center", gap: 2, paddingVertical: 4 },
   blockActionText: { color: theme.olive, fontSize: 14, fontWeight: "600" },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, paddingHorizontal: 4 },
   rowPressed: { backgroundColor: theme.surfaceSoft, borderRadius: 12 },
   rowText: { flex: 1 },
   rowNote: { color: theme.ink, fontSize: 15 },
-  rowCategory: { color: theme.inkSoft, fontSize: 13, marginTop: 2 },
-  rowAmount: { color: theme.ink, fontWeight: "600", fontSize: 15 },
+  rowCategory: { color: theme.muted, fontSize: 13, marginTop: 2 },
+  rowAmount: { color: theme.ink, fontFamily: fonts.monoMedium, fontSize: 14 },
   positive: { color: theme.positive },
   empty: { alignItems: "center", gap: 12, paddingVertical: 28, paddingHorizontal: 24 },
   emptyIcon: {
@@ -227,9 +227,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   emptyText: { color: theme.inkSoft, textAlign: "center", fontSize: 14, lineHeight: 20 },
-  emptyButton: { backgroundColor: theme.olive, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 11 },
+  emptyButton: { backgroundColor: theme.olive, borderRadius: 14, paddingHorizontal: 18, paddingVertical: 11 },
   emptyButtonText: { color: "#fff", fontWeight: "600" },
-  button: { backgroundColor: theme.olive, borderRadius: 14, paddingVertical: 15, alignItems: "center" },
+  button: { backgroundColor: theme.olive, borderRadius: 18, paddingVertical: 16, alignItems: "center" },
   buttonDanger: { backgroundColor: theme.negativeTint },
   buttonSoft: { backgroundColor: theme.oliveTint },
   buttonDisabled: { opacity: 0.5 },

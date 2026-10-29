@@ -12,8 +12,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/AuthContext";
-import { API_BASE_URL } from "@/api";
-import { theme } from "@/theme";
+import { TreeRings, KronaMark } from "@/rings";
+import { fonts, theme } from "@/theme";
 
 export function AuthScreen() {
   const { login, register } = useAuth();
@@ -44,21 +44,26 @@ export function AuthScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.logo}>
-          <Text style={styles.logoMark}>✦</Text>
+        <View style={[styles.hero, { paddingTop: insets.top + 24 }]}>
+          {/* Рівні кільця тут — лише образ: справжні з'являються на головній з даними. */}
+          <TreeRings nets={[3, 5, 4, 7, 6, 9]} size={300} style={styles.heroRings} />
+          <View style={styles.brand}>
+            <KronaMark size={44} />
+            <Text style={styles.brandName}>Крона</Text>
+          </View>
+          <Text style={styles.heroLabel}>ОБЛІК ОСОБИСТИХ ФІНАНСІВ</Text>
+          <Text style={styles.heroTitle}>Гроші, що ростуть кільцями</Text>
         </View>
-        <Text style={styles.title}>Крона</Text>
-        <Text style={styles.subtitle}>Облік особистих фінансів</Text>
 
-        <View style={styles.card}>
+        <View style={styles.form}>
+          <Text style={styles.eyebrow}>{isRegister ? "НОВИЙ АКАУНТ" : "З ПОВЕРНЕННЯМ"}</Text>
+          <Text style={styles.title}>{isRegister ? "Посадімо ваше дерево" : "Увійдіть у Крону"}</Text>
+
           <View style={styles.segmented}>
             {[
               { key: false, label: "Вхід" },
@@ -83,7 +88,7 @@ export function AuthScreen() {
 
           {isRegister && (
             <View style={styles.field}>
-              <Text style={styles.label}>Ваше імʼя</Text>
+              <Text style={styles.label}>ВАШЕ ІМʼЯ</Text>
               <TextInput
                 value={displayName}
                 onChangeText={setDisplayName}
@@ -96,7 +101,7 @@ export function AuthScreen() {
           )}
 
           <View style={styles.field}>
-            <Text style={styles.label}>Email</Text>
+            <Text style={styles.label}>EMAIL</Text>
             <TextInput
               value={email}
               onChangeText={setEmail}
@@ -111,7 +116,7 @@ export function AuthScreen() {
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Пароль</Text>
+            <Text style={styles.label}>ПАРОЛЬ</Text>
             <TextInput
               value={password}
               onChangeText={setPassword}
@@ -133,7 +138,7 @@ export function AuthScreen() {
             onPress={submit}
             disabled={busy}
             accessibilityRole="button"
-            style={[styles.primary, busy && styles.primaryDisabled]}
+            style={({ pressed }) => [styles.primary, busy && styles.primaryDisabled, pressed && styles.pressed]}
           >
             {busy ? (
               <ActivityIndicator color="#fff" />
@@ -141,12 +146,8 @@ export function AuthScreen() {
               <Text style={styles.primaryText}>{isRegister ? "Створити акаунт" : "Увійти"}</Text>
             )}
           </Pressable>
-        </View>
 
-        {/* Видно, до якого бекенду підключається телефон — найчастіша причина
-            проблем на показі: інша мережа або інша адреса машини. У зібраному
-            застосунку користувачу ця адреса ні до чого. */}
-        {__DEV__ && <Text style={styles.hint}>{API_BASE_URL}</Text>}
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -154,52 +155,70 @@ export function AuthScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.bg },
-  scroll: { paddingHorizontal: 24 },
-  logo: {
-    alignSelf: "center",
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: theme.olive,
-    alignItems: "center",
-    justifyContent: "center",
+  hero: {
+    backgroundColor: theme.forest,
+    borderBottomLeftRadius: 36,
+    borderBottomRightRadius: 36,
+    paddingHorizontal: 24,
+    paddingBottom: 32,
+    overflow: "hidden",
   },
-  logoMark: { color: "#fff", fontSize: 24 },
-  title: { textAlign: "center", fontSize: 26, fontWeight: "700", color: theme.ink, marginTop: 12 },
-  subtitle: { textAlign: "center", color: theme.muted, marginTop: 4, marginBottom: 24 },
-  card: { backgroundColor: theme.surface, borderRadius: 20, padding: 20, gap: 14 },
-  segmented: { flexDirection: "row", backgroundColor: theme.oliveTint, borderRadius: 12, padding: 4 },
-  segment: { flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: "center" },
-  segmentActive: { backgroundColor: theme.surface },
-  segmentText: { color: theme.muted, fontWeight: "500" },
-  segmentTextActive: { color: theme.ink },
-  field: { gap: 6 },
-  label: { fontSize: 12, color: theme.muted, fontWeight: "500" },
+  heroRings: { position: "absolute", right: -110, bottom: -120 },
+  brand: { flexDirection: "row", alignItems: "center", gap: 10 },
+  brandName: { color: "#fff", fontSize: 20, fontFamily: fonts.display },
+  heroLabel: { color: theme.oliveSoft, fontSize: 11, fontFamily: fonts.mono, letterSpacing: 1.8, marginTop: 56 },
+  heroTitle: {
+    color: "#fff",
+    fontSize: 30,
+    lineHeight: 36,
+    fontFamily: fonts.display,
+    letterSpacing: -0.8,
+    marginTop: 10,
+    maxWidth: 280,
+  },
+  form: { paddingHorizontal: 20, paddingTop: 26, gap: 14 },
+  eyebrow: { color: theme.muted, fontSize: 11, fontFamily: fonts.mono, letterSpacing: 1.8 },
+  title: { color: theme.ink, fontSize: 24, fontFamily: fonts.display, letterSpacing: -0.5, marginTop: -6 },
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: theme.surface,
+    borderRadius: 18,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: theme.lineSoft,
+    marginTop: 4,
+  },
+  segment: { flex: 1, paddingVertical: 11, borderRadius: 14, alignItems: "center" },
+  segmentActive: { backgroundColor: theme.night },
+  segmentText: { color: theme.inkSoft, fontWeight: "500", fontSize: 15 },
+  segmentTextActive: { color: "#fff" },
+  field: { gap: 7 },
+  label: { fontSize: 11, color: theme.muted, fontFamily: fonts.mono, letterSpacing: 1.6 },
   input: {
     borderWidth: 1,
     borderColor: theme.line,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 15,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
     color: theme.ink,
     backgroundColor: theme.surface,
   },
   error: {
     backgroundColor: theme.negativeTint,
     color: theme.negative,
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 14,
+    padding: 12,
     fontSize: 13,
   },
   primary: {
     backgroundColor: theme.olive,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 18,
+    paddingVertical: 17,
     alignItems: "center",
     marginTop: 4,
   },
   primaryDisabled: { opacity: 0.6 },
-  primaryText: { color: "#fff", fontWeight: "600", fontSize: 15 },
-  hint: { textAlign: "center", color: theme.muted, fontSize: 11, marginTop: 20 },
+  pressed: { opacity: 0.85 },
+  primaryText: { color: "#fff", fontSize: 16, fontFamily: fonts.display },
 });

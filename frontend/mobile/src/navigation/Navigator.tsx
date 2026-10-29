@@ -189,7 +189,7 @@ export function Navigator() {
           style={[
             styles.toast,
             toast.kind === "error" && styles.toastError,
-            { bottom: (showBar ? 64 : 12) + insets.bottom, opacity: toastOpacity },
+            { bottom: (showBar ? 96 : 12) + insets.bottom, opacity: toastOpacity },
           ]}
           accessibilityLiveRegion="polite"
         >
@@ -214,23 +214,25 @@ export function Navigator() {
       )}
 
       {showBar && (
-        <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-          {TABS.slice(0, 2).map((tab) => (
-            <TabButton key={tab.key} tab={tab} selected={tab.key === active} onPress={() => switchTab(tab.key)} />
-          ))}
-          <View style={styles.addSlot}>
-            <Pressable
-              onPress={() => push({ name: "add" })}
-              accessibilityRole="button"
-              accessibilityLabel="Додати операцію"
-              style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
-            >
-              <Ionicons name="add" size={30} color="#fff" />
-            </Pressable>
+        <View style={[styles.barWrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+          <View style={styles.bar}>
+            {TABS.slice(0, 2).map((tab) => (
+              <TabButton key={tab.key} tab={tab} selected={tab.key === active} onPress={() => switchTab(tab.key)} />
+            ))}
+            <View style={styles.addSlot}>
+              <Pressable
+                onPress={() => push({ name: "add" })}
+                accessibilityRole="button"
+                accessibilityLabel="Додати операцію"
+                style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+              >
+                <Ionicons name="add" size={32} color="#fff" />
+              </Pressable>
+            </View>
+            {TABS.slice(2).map((tab) => (
+              <TabButton key={tab.key} tab={tab} selected={tab.key === active} onPress={() => switchTab(tab.key)} />
+            ))}
           </View>
-          {TABS.slice(2).map((tab) => (
-            <TabButton key={tab.key} tab={tab} selected={tab.key === active} onPress={() => switchTab(tab.key)} />
-          ))}
         </View>
       )}
     </NavContext.Provider>
@@ -270,7 +272,7 @@ function TabButton({
       accessibilityLabel={tab.label}
       style={styles.tab}
     >
-      <Ionicons name={selected ? tab.iconActive : tab.icon} size={23} color={selected ? theme.olive : theme.muted} />
+      <Ionicons name={selected ? tab.iconActive : tab.icon} size={23} color={selected ? theme.night : theme.muted} />
       <Text style={[styles.tabLabel, selected && styles.tabLabelActive]}>{tab.label}</Text>
     </Pressable>
   );
@@ -279,31 +281,39 @@ function TabButton({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.bg },
   hidden: { display: "none" },
+  // Панель — окремий білий «острівець» над тлом, як у макеті.
+  barWrap: { backgroundColor: theme.bg, paddingHorizontal: 14, paddingTop: 6 },
   bar: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
     backgroundColor: theme.surface,
-    borderTopWidth: 1,
-    borderTopColor: theme.lineSoft,
-    paddingTop: 6,
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: theme.lineSoft,
+    paddingVertical: 8,
+    shadowColor: theme.night,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
-  tab: { flex: 1, alignItems: "center", justifyContent: "center", gap: 2, minHeight: 48 },
+  tab: { flex: 1, alignItems: "center", justifyContent: "center", gap: 3, minHeight: 50 },
   tabLabel: { fontSize: 11, color: theme.muted },
-  tabLabelActive: { color: theme.olive, fontWeight: "600" },
-  addSlot: { flex: 1, alignItems: "center", justifyContent: "flex-end", minHeight: 48 },
+  tabLabelActive: { color: theme.night, fontWeight: "700" },
+  addSlot: { flex: 1, alignItems: "center", justifyContent: "center", minHeight: 50 },
   addButton: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 58,
+    height: 58,
+    borderRadius: 22,
     backgroundColor: theme.olive,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: -22,
+    marginTop: -26,
     shadowColor: theme.oliveDeep,
     shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
   },
   pressed: { opacity: 0.85, transform: [{ scale: 0.96 }] },
   toast: {

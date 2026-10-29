@@ -2,16 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { MONTH_NAMES, monthKey, type MonthStats, type Transaction } from "@finance/shared";
+import { MONTH_NAMES, monthKey, quickPrompts, type MonthStats, type Transaction } from "@finance/shared";
 import { statsApi, transactionsApi } from "@/api";
 import { useAuth } from "@/AuthContext";
 import { categoryColor, money, signedMoney } from "@/format";
 import { useNav, useReloadOnChange } from "@/navigation/context";
+import { TreeRings } from "@/rings";
 import { BlockTitle, Card, EmptyState, TransactionRow, ui } from "@/ui";
-import { theme } from "@/theme";
+import { fonts, theme } from "@/theme";
 
-// Підказки для асистента — показують, що його можна питати і про числа, і про зміст.
-const QUESTIONS = ["На що я витратила найбільше цього місяця?", "Скільки пішло на каву за місяць?"];
+const RING_MONTHS = 6;
 
 function greeting(hour: number): string {
   if (hour < 5) return "Доброї ночі";
@@ -20,12 +20,22 @@ function greeting(hour: number): string {
   return "Добрий вечір";
 }
 
+function daysWord(n: number): string {
+  const tens = n % 100;
+  const last = n % 10;
+  if (tens >= 11 && tens <= 14) return "днів";
+  if (last === 1) return "день";
+  if (last >= 2 && last <= 4) return "дні";
+  return "днів";
+}
+
 export function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { push, switchTab, ask } = useNav();
   const [stats, setStats] = useState<MonthStats | null>(null);
   const [recent, setRecent] = useState<Transaction[]>([]);
+  const [nets, setNets] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +48,12 @@ export function HomeScreen() {
   const request = useRef(0);
   const load = useCallback(async () => {
     const id = ++request.current;
+    // Кільця — прикраса: якщо підсумки за пів року не прийшли, малюємо рівні,
+    // а решта головної працює як завжди.
+    statsApi
+      .monthly(month, RING_MONTHS)
+      .then((data) => id === request.current && setNets(data.summaries.map((s) => s.net)))
+      .catch(() => id === request.current && setNets([]));
     try {
       const [monthStats, list] = await Promise.all([statsApi.month(month), transactionsApi.recent(4)]);
       if (id !== request.current) return;
@@ -71,11 +87,12 @@ export function HomeScreen() {
 
   const categories = stats?.category_breakdown ?? [];
   const totalExpenses = stats?.total_expenses ?? 0;
+  const balance = stats ? signedMoney(stats.balance).replace(/ ₴$/, "") : "—";
 
   return (
     <ScrollView
       style={ui.screen}
-      contentContainerStyle={[ui.content, { paddingTop: insets.top + 12 }]}
+      contentContainerStyle={[ui.content, { paddingTop: insets.top + 16 }]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -90,7 +107,7 @@ export function HomeScreen() {
       <View style={styles.top}>
         <View style={styles.topText}>
           <Text style={styles.date}>{today}</Text>
-          <Text style={styles.hello}>
+          <Text style={styles.hello} numberOfLines={2}>
             {greeting(now.getHours())}, {firstName}
           </Text>
         </View>
@@ -98,27 +115,33 @@ export function HomeScreen() {
           onPress={() => push({ name: "profile" })}
           accessibilityRole="button"
           accessibilityLabel="Профіль"
-          style={styles.avatar}
+          style={({ pressed }) => [styles.avatar, pressed && styles.pressed]}
         >
           <Text style={styles.avatarText}>{firstName.charAt(0).toUpperCase() || "К"}</Text>
         </Pressable>
       </View>
 
-      <Card onPress={() => switchTab("analytics")} label="Підсумок місяця, відкрити аналітику" style={styles.summary}>
-        <View style={styles.summaryHead}>
-          <Text style={styles.summaryLabel}>Залишок · {MONTH_NAMES[now.getMonth()].toLowerCase()}</Text>
+      <Pressable
+        onPress={() => switchTab("analytics")}
+        accessibilityRole="button"
+        accessibilityLabel="Підсумок місяця, відкрити аналітику"
+        style={({ pressed }) => [styles.hero, pressed && styles.pressed]}
+      >
+        <TreeRings nets={nets} size={230} style={styles.heroRings} />
+
+        <View style={styles.heroHead}>
+          <Text style={styles.heroLabel}>ЗАЛИШОК · {MONTH_NAMES[now.getMonth()].toUpperCase()}</Text>
           <View style={styles.daysPill}>
-            <Text style={styles.daysText}>
-              {daysLeft === 0 ? "останній день" : `ще ${daysLeft} дн.`}
-            </Text>
+            <Text style={styles.daysText}>{daysLeft === 0 ? "останній день" : `ще ${daysLeft} ${daysWord(daysLeft)}`}</Text>
           </View>
         </View>
 
         {loading && !stats ? (
-          <ActivityIndicator color={theme.olive} style={styles.loader} />
+          <ActivityIndicator color={theme.cream} style={styles.loader} />
         ) : (
-          <Text style={[styles.summaryValue, stats && stats.balance < 0 && styles.negative]}>
-            {stats ? signedMoney(stats.balance) : "—"}
+          <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit>
+            {balance}
+            <Text style={styles.heroCurrency}> ₴</Text>
           </Text>
         )}
 
@@ -128,17 +151,14 @@ export function HomeScreen() {
               <View
                 style={[
                   styles.meterFill,
-                  {
-                    width: `${Math.min(spentShare, 1) * 100}%`,
-                    backgroundColor: overspent ? theme.negative : theme.olive,
-                  },
+                  { width: `${Math.min(spentShare, 1) * 100}%`, backgroundColor: overspent ? "#E08A73" : theme.oliveSoft },
                 ]}
               />
             </View>
             <Text style={styles.meterText}>
               {overspent
-                ? `Витрати перевищили дохід на ${money(stats!.total_expenses - stats!.total_income)}`
-                : `Витрачено ${Math.round(spentShare * 100)}% доходу`}
+                ? `витрати більші за дохід на ${money(stats!.total_expenses - stats!.total_income)}`
+                : `витрачено ${Math.round(spentShare * 100)}% доходу`}
             </Text>
           </View>
         )}
@@ -146,7 +166,7 @@ export function HomeScreen() {
         <View style={styles.flows}>
           <View style={styles.flow}>
             <Text style={styles.flowLabel}>Надійшло</Text>
-            <Text style={[styles.flowValue, styles.positive]}>{stats ? money(stats.total_income) : "—"}</Text>
+            <Text style={styles.flowValue}>{stats ? money(stats.total_income) : "—"}</Text>
           </View>
           <View style={styles.flow}>
             <Text style={styles.flowLabel}>Витрачено</Text>
@@ -154,10 +174,10 @@ export function HomeScreen() {
           </View>
           <View style={styles.flow}>
             <Text style={styles.flowLabel}>У середньому</Text>
-            <Text style={styles.flowValue}>{stats ? `${money(stats.avg_daily_expense)}/день` : "—"}</Text>
+            <Text style={styles.flowValue}>{stats ? `${money(stats.avg_daily_expense)}/д` : "—"}</Text>
           </View>
         </View>
-      </Card>
+      </Pressable>
 
       <View style={styles.buttons}>
         <Pressable
@@ -165,7 +185,7 @@ export function HomeScreen() {
           accessibilityRole="button"
           style={({ pressed }) => [styles.bigButton, styles.expenseButton, pressed && styles.pressed]}
         >
-          <Ionicons name="remove" size={20} color="#fff" />
+          <Ionicons name="remove" size={22} color="#fff" />
           <Text style={styles.bigButtonText}>Витрата</Text>
         </Pressable>
         <Pressable
@@ -173,7 +193,7 @@ export function HomeScreen() {
           accessibilityRole="button"
           style={({ pressed }) => [styles.bigButton, styles.incomeButton, pressed && styles.pressed]}
         >
-          <Ionicons name="add" size={20} color={theme.oliveDeep} />
+          <Ionicons name="add" size={22} color={theme.positive} />
           <Text style={[styles.bigButtonText, styles.incomeButtonText]}>Дохід</Text>
         </Pressable>
       </View>
@@ -181,41 +201,46 @@ export function HomeScreen() {
       {error && <Text style={ui.error}>{error}</Text>}
 
       {categories.length > 0 && (
-        <>
-          <BlockTitle title="Куди йдуть гроші" action="Детальніше" onAction={() => switchTab("analytics")} />
-          <Card onPress={() => switchTab("analytics")} label="Структура витрат">
-            <View style={styles.stack}>
-              {categories.map((c) => (
-                <View
-                  key={c.category}
-                  style={{ flex: c.amount / Math.max(totalExpenses, 1), backgroundColor: categoryColor(c.category) }}
-                />
-              ))}
-            </View>
-            <View style={styles.legend}>
-              {categories.slice(0, 4).map((c) => (
-                <View key={c.category} style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: categoryColor(c.category) }]} />
-                  <Text style={styles.legendName}>{c.category}</Text>
-                  <Text style={styles.legendValue}>{c.percent}%</Text>
-                </View>
-              ))}
-            </View>
-          </Card>
-        </>
+        <Card onPress={() => switchTab("analytics")} label="Куди пішли гроші, відкрити аналітику" style={styles.where}>
+          <View style={styles.whereHead}>
+            <Text style={styles.whereTitle}>Куди пішли гроші</Text>
+            <Text style={styles.whereLink}>Аналітика</Text>
+          </View>
+          <View style={styles.stack}>
+            {categories.map((c) => (
+              <View
+                key={c.category}
+                style={[
+                  styles.block,
+                  { flex: c.amount / Math.max(totalExpenses, 1), backgroundColor: categoryColor(c.category) },
+                ]}
+              />
+            ))}
+          </View>
+          <View style={styles.legend}>
+            {categories.slice(0, 4).map((c) => (
+              <View key={c.category} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: categoryColor(c.category) }]} />
+                <Text style={styles.legendName}>{c.category}</Text>
+                <Text style={styles.legendValue}>{c.percent}%</Text>
+              </View>
+            ))}
+          </View>
+        </Card>
       )}
 
       <View style={styles.assistant}>
-        <View style={styles.assistantHead}>
-          <View style={styles.assistantIcon}>
-            <Ionicons name="sparkles" size={18} color={theme.gold} />
-          </View>
-          <View style={styles.assistantText}>
-            <Text style={styles.assistantTitle}>Запитайте Крону</Text>
-            <Text style={styles.assistantSub}>Про суми, звички й навіть настрій покупок</Text>
-          </View>
+        <View style={styles.assistantRings} pointerEvents="none">
+          {[150, 110, 70, 34].map((d) => (
+            <View
+              key={d}
+              style={[styles.assistantRing, { width: d, height: d, borderRadius: d / 2, marginLeft: -d / 2, marginTop: -d / 2 }]}
+            />
+          ))}
         </View>
-        {QUESTIONS.map((q) => (
+        <Text style={styles.assistantTitle}>Запитайте Крону</Text>
+        <Text style={styles.assistantSub}>Про суми, звички й навіть настрій покупок</Text>
+        {quickPrompts.map((q) => (
           <Pressable
             key={q}
             onPress={() => ask(q)}
@@ -223,7 +248,7 @@ export function HomeScreen() {
             style={({ pressed }) => [styles.question, pressed && styles.pressed]}
           >
             <Text style={styles.questionText}>{q}</Text>
-            <Ionicons name="arrow-forward" size={16} color={theme.gold} />
+            <Ionicons name="arrow-forward" size={16} color={theme.oliveSoft} />
           </Pressable>
         ))}
       </View>
@@ -244,16 +269,22 @@ export function HomeScreen() {
                     accessibilityRole="button"
                     style={({ pressed }) => [styles.limit, pressed && styles.pressed]}
                   >
-                    <Text style={styles.limitName}>{budget.category}</Text>
+                    <View style={styles.limitHead}>
+                      <View style={[styles.legendDot, { backgroundColor: categoryColor(budget.category) }]} />
+                      <Text style={styles.limitName}>{budget.category}</Text>
+                    </View>
                     <Text style={[styles.limitLeft, over && styles.negative]}>
                       {over ? `+${money(budget.spent - budget.limit)}` : money(budget.limit - budget.spent)}
                     </Text>
-                    <Text style={styles.limitHint}>{over ? "понад ліміт" : "ще можна"}</Text>
+                    <Text style={[styles.limitHint, over && styles.negative]}>{over ? "понад ліміт" : "ще можна"}</Text>
                     <View style={styles.limitTrack}>
                       <View
                         style={[
                           styles.limitFill,
-                          { width: `${share * 100}%`, backgroundColor: over ? theme.negative : categoryColor(budget.category) },
+                          {
+                            width: `${share * 100}%`,
+                            backgroundColor: over ? theme.negative : share > 0.8 ? theme.gold : theme.olive,
+                          },
                         ]}
                       />
                     </View>
@@ -290,93 +321,102 @@ export function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  top: { flexDirection: "row", alignItems: "center", gap: 12 },
+  top: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 },
   topText: { flex: 1 },
-  date: { color: theme.inkSoft, fontSize: 13, textTransform: "capitalize" },
-  hello: { color: theme.ink, fontSize: 24, fontWeight: "700", marginTop: 2 },
+  date: { color: theme.muted, fontSize: 12, fontFamily: fonts.mono, letterSpacing: 1.6, textTransform: "uppercase" },
+  hello: { color: theme.ink, fontSize: 27, fontFamily: fonts.display, letterSpacing: -0.6, marginTop: 6 },
   avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 16,
-    backgroundColor: theme.olive,
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: theme.oliveTint,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { fontSize: 19, fontWeight: "700", color: "#fff" },
-  pressed: { opacity: 0.8 },
-  summary: { gap: 6, borderWidth: 1, borderColor: theme.lineSoft },
-  summaryHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  summaryLabel: { color: theme.inkSoft, fontSize: 14 },
-  daysPill: { backgroundColor: theme.oliveTint, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  daysText: { color: theme.oliveDeep, fontSize: 12, fontWeight: "600" },
-  loader: { alignSelf: "flex-start", marginVertical: 14 },
-  summaryValue: { color: theme.ink, fontSize: 34, fontWeight: "800", letterSpacing: -0.5 },
+  avatarText: { fontSize: 20, fontFamily: fonts.display, color: theme.oliveDeep },
+  pressed: { opacity: 0.85 },
+  hero: { backgroundColor: theme.forest, borderRadius: 28, padding: 22, overflow: "hidden" },
+  heroRings: { position: "absolute", right: -70, top: -80 },
+  heroHead: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  heroLabel: { color: theme.oliveSoft, fontSize: 11, fontFamily: fonts.mono, letterSpacing: 1.8 },
+  daysPill: { backgroundColor: "rgba(255,255,255,0.12)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  daysText: { color: "rgba(255,255,255,0.85)", fontSize: 11, fontFamily: fonts.mono },
+  loader: { alignSelf: "flex-start", marginVertical: 22 },
+  heroValue: { color: "#fff", fontSize: 50, fontFamily: fonts.display, letterSpacing: -1.5, marginTop: 14 },
+  heroCurrency: { color: theme.oliveSoft, fontSize: 26 },
   negative: { color: theme.negative },
-  positive: { color: theme.positive },
-  meter: { gap: 6, marginTop: 4 },
-  meterTrack: { height: 8, borderRadius: 4, backgroundColor: theme.lineSoft, overflow: "hidden" },
-  meterFill: { height: 8, borderRadius: 4 },
-  meterText: { color: theme.inkSoft, fontSize: 12 },
+  meter: { gap: 8, marginTop: 16 },
+  meterTrack: { height: 7, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.12)", overflow: "hidden" },
+  meterFill: { height: 7, borderRadius: 4 },
+  meterText: { color: "rgba(255,255,255,0.75)", fontSize: 12, fontFamily: fonts.mono },
   flows: {
     flexDirection: "row",
-    marginTop: 10,
-    paddingTop: 12,
+    marginTop: 16,
+    paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: theme.lineSoft,
+    borderTopColor: "rgba(255,255,255,0.12)",
   },
-  flow: { flex: 1, gap: 2 },
-  flowLabel: { color: theme.inkSoft, fontSize: 12 },
-  flowValue: { color: theme.ink, fontSize: 14, fontWeight: "600" },
+  flow: { flex: 1, gap: 4 },
+  flowLabel: { color: "rgba(255,255,255,0.7)", fontSize: 12 },
+  flowValue: { color: "#fff", fontSize: 14, fontFamily: fonts.monoMedium },
   buttons: { flexDirection: "row", gap: 10 },
   bigButton: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: 14,
-    borderRadius: 16,
+    gap: 8,
+    paddingVertical: 18,
+    borderRadius: 22,
   },
-  expenseButton: { backgroundColor: theme.olive },
-  incomeButton: { backgroundColor: theme.oliveTint },
-  bigButtonText: { color: "#fff", fontSize: 15, fontWeight: "600" },
-  incomeButtonText: { color: theme.oliveDeep },
-  stack: { flexDirection: "row", height: 14, borderRadius: 7, overflow: "hidden", gap: 2 },
-  legend: { flexDirection: "row", flexWrap: "wrap", marginTop: 12, rowGap: 8 },
-  legendItem: { width: "50%", flexDirection: "row", alignItems: "center", gap: 6, paddingRight: 8 },
+  expenseButton: { backgroundColor: theme.night },
+  incomeButton: { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line },
+  bigButtonText: { color: "#fff", fontSize: 16, fontFamily: fonts.display },
+  incomeButtonText: { color: theme.positive },
+  where: { gap: 16, padding: 20 },
+  whereHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  whereTitle: { fontSize: 17, fontFamily: fonts.display, color: theme.ink },
+  whereLink: { color: theme.oliveDeep, fontSize: 13, fontWeight: "600" },
+  stack: { flexDirection: "row", height: 46, gap: 4 },
+  block: { borderRadius: 10, minWidth: 6 },
+  legend: { flexDirection: "row", flexWrap: "wrap", rowGap: 10 },
+  legendItem: { width: "50%", flexDirection: "row", alignItems: "center", gap: 8, paddingRight: 12 },
   legendDot: { width: 9, height: 9, borderRadius: 5 },
-  legendName: { flex: 1, color: theme.inkSoft, fontSize: 13, textTransform: "capitalize" },
-  legendValue: { color: theme.ink, fontSize: 13, fontWeight: "600" },
-  assistant: { backgroundColor: theme.goldTint, borderRadius: 18, padding: 16, gap: 10 },
-  assistantHead: { flexDirection: "row", alignItems: "center", gap: 10 },
-  assistantIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: "#fff",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  assistantText: { flex: 1 },
-  assistantTitle: { color: theme.ink, fontSize: 15, fontWeight: "700" },
-  assistantSub: { color: theme.inkSoft, fontSize: 12, marginTop: 1 },
+  legendName: { flex: 1, color: theme.ink, fontSize: 14, textTransform: "capitalize" },
+  legendValue: { color: theme.muted, fontSize: 13, fontFamily: fonts.mono },
+  assistant: { backgroundColor: theme.night, borderRadius: 28, padding: 20, gap: 10, overflow: "hidden" },
+  assistantRings: { position: "absolute", right: 30, top: 30 },
+  assistantRing: { position: "absolute", borderWidth: 1, borderColor: "rgba(169,185,138,0.22)" },
+  assistantTitle: { color: "#fff", fontSize: 22, fontFamily: fonts.display, letterSpacing: -0.4 },
+  assistantSub: { color: "rgba(255,255,255,0.72)", fontSize: 14, marginBottom: 4 },
   question: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "rgba(255,255,255,0.75)",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
   },
-  questionText: { flex: 1, color: theme.ink, fontSize: 14 },
+  questionText: { flex: 1, color: "rgba(255,255,255,0.9)", fontSize: 14 },
   limits: { gap: 10, paddingRight: 4 },
-  limit: { width: 140, backgroundColor: theme.surface, borderRadius: 16, padding: 14, gap: 2 },
+  limit: {
+    width: 150,
+    backgroundColor: theme.surface,
+    borderRadius: 20,
+    padding: 14,
+    gap: 2,
+    borderWidth: 1,
+    borderColor: theme.lineSoft,
+  },
+  limitHead: { flexDirection: "row", alignItems: "center", gap: 6 },
   limitName: { color: theme.inkSoft, fontSize: 13, textTransform: "capitalize" },
-  limitLeft: { color: theme.ink, fontSize: 18, fontWeight: "700", marginTop: 4 },
-  limitHint: { color: theme.inkSoft, fontSize: 11 },
-  limitTrack: { height: 5, borderRadius: 3, backgroundColor: theme.lineSoft, overflow: "hidden", marginTop: 8 },
-  limitFill: { height: 5, borderRadius: 3 },
+  limitLeft: { color: theme.ink, fontSize: 17, fontFamily: fonts.display, marginTop: 8 },
+  limitHint: { color: theme.muted, fontSize: 11, fontFamily: fonts.mono },
+  limitTrack: { height: 6, borderRadius: 3, backgroundColor: theme.lineSoft, overflow: "hidden", marginTop: 10 },
+  limitFill: { height: 6, borderRadius: 3 },
   setLimits: {
     flexDirection: "row",
     alignItems: "center",
@@ -384,9 +424,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderStyle: "dashed",
     borderColor: theme.line,
-    borderRadius: 14,
+    borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 13,
+    paddingVertical: 14,
   },
   setLimitsText: { flex: 1, color: theme.oliveDeep, fontSize: 14, fontWeight: "500" },
   recent: { paddingVertical: 6, paddingHorizontal: 10 },

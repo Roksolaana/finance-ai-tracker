@@ -10,46 +10,35 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
-  NO_TOOL_INFO,
-  ROUTE_INFO,
   chatGreeting,
+  quickChips,
   quickPrompts,
   type ChatMessage,
   type Transaction,
 } from "@finance/shared";
 import { chatApi } from "@/api";
-import { theme } from "@/theme";
-import { ScreenHeader } from "@/ui";
+import { money } from "@/format";
+import { fonts, theme } from "@/theme";
+import { CategoryIcon } from "@/ui";
 import { useNav, useScreen } from "@/navigation/context";
 
-// Як отримано відповідь — відкривається кнопкою «i», щоб не заважати читати.
-function HowAnswered({ message, found }: { message: ChatMessage; found?: Transaction[] }) {
-  const call = message.tool_call;
-  const route = call ? ROUTE_INFO[call.kind] : undefined;
+function FoundRecords({ items }: { items: Transaction[] }) {
   return (
-    <View style={styles.details}>
-      {route && call ? (
-        <>
-          <Text style={styles.detailsTitle}>{route.title}</Text>
-          {route.steps.map((step, i) => (
-            <Text key={step} style={styles.detailsText}>
-              {i + 1}. {step}
-            </Text>
-          ))}
-          <Text style={styles.detailsMeta}>
-            {call.name} · {(call.duration_ms / 1000).toFixed(1)} с · записів: {found?.length ?? 0}
+    <View style={styles.found}>
+      <Text style={styles.foundTitle}>ЗНАЙДЕНІ ЗАПИСИ · {items.length}</Text>
+      {items.slice(0, 3).map((t) => (
+        <View key={t.id} style={styles.foundRow}>
+          <CategoryIcon category={t.category} size={34} />
+          <Text style={styles.foundNote} numberOfLines={1}>
+            {t.note ?? t.category}
           </Text>
-          {found?.slice(0, 5).map((t) => (
-            <Text key={t.id} style={styles.detailsText} numberOfLines={1}>
-              • {t.note ?? t.category} · {Math.abs(t.amount)} ₴
-            </Text>
-          ))}
-        </>
-      ) : (
-        <Text style={styles.detailsText}>{NO_TOOL_INFO}</Text>
-      )}
+          <Text style={styles.foundAmount}>{money(t.amount)}</Text>
+        </View>
+      ))}
+      {items.length > 3 && <Text style={styles.foundMore}>…і ще {items.length - 3}</Text>}
     </View>
   );
 }
@@ -61,9 +50,9 @@ function localId(): string {
 }
 
 export function ChatScreen() {
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<ChatMessage[]>(chatGreeting);
   const [found, setFound] = useState<Record<string, Transaction[]>>({});
-  const [opened, setOpened] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -169,29 +158,32 @@ export function ChatScreen() {
     }
   };
 
+  const canSend = !!enabled && !sending && historyLoaded;
+  const started = messages.length > chatGreeting.length;
+
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior="padding"
-    >
-      <ScreenHeader
-        title="AI-асистент"
-        subtitle="Питайте про свої гроші своїми словами"
-        right={
-          messages.length > chatGreeting.length ? (
-            <Pressable
-              onPress={restart}
-              disabled={sending}
-              accessibilityRole="button"
-              accessibilityLabel="Почати розмову заново"
-              hitSlop={8}
-              style={styles.restart}
-            >
-              <Ionicons name="refresh" size={20} color={theme.olive} />
-            </Pressable>
-          ) : undefined
-        }
-      />
+    <KeyboardAvoidingView style={styles.root} behavior="padding">
+      <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>Асистент</Text>
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, enabled === false && styles.statusDotOff]} />
+            <Text style={styles.subtitle}>питайте своїми словами</Text>
+          </View>
+        </View>
+        {started && (
+          <Pressable
+            onPress={restart}
+            disabled={sending}
+            accessibilityRole="button"
+            accessibilityLabel="Почати розмову заново"
+            hitSlop={8}
+            style={({ pressed }) => [styles.restart, pressed && styles.pressed]}
+          >
+            <Ionicons name="refresh" size={22} color={theme.inkSoft} />
+          </Pressable>
+        )}
+      </View>
 
       <FlatList
         ref={listRef}
@@ -199,34 +191,25 @@ export function ChatScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-        renderItem={({ item }) => (
-          item.role === "user" ? (
-            <View style={styles.userWrap}>
-              <View style={styles.userBubble}>
-                <Text style={styles.userText}>{item.content}</Text>
+        renderItem={({ item }) => {
+          if (item.role === "user") {
+            return (
+              <View style={styles.userWrap}>
+                <View style={styles.userBubble}>
+                  <Text style={styles.userText}>{item.content}</Text>
+                </View>
               </View>
-            </View>
-          ) : (
+            );
+          }
+          return (
             <View style={styles.botWrap}>
               <View style={styles.botBubble}>
                 <Text style={styles.botText}>{item.content}</Text>
               </View>
-              {!chatGreeting.some((m) => m.id === item.id) && (
-                <Pressable
-                  onPress={() => setOpened((current) => (current === item.id ? null : item.id))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Як отримано відповідь"
-                  accessibilityState={{ expanded: opened === item.id }}
-                  hitSlop={10}
-                  style={[styles.info, opened === item.id && styles.infoActive]}
-                >
-                  <Text style={[styles.infoText, opened === item.id && styles.infoTextActive]}>i</Text>
-                </Pressable>
-              )}
-              {opened === item.id && <HowAnswered message={item} found={found[item.id]} />}
+              {found[item.id] && <FoundRecords items={found[item.id]} />}
             </View>
-          )
-        )}
+          );
+        }}
         ListFooterComponent={
           <View>
             {sending && (
@@ -234,16 +217,16 @@ export function ChatScreen() {
                 Асистент шукає відповідь…
               </Text>
             )}
-            {messages.length === chatGreeting.length && !sending && (
+            {!started && !sending && (
               <View style={styles.prompts}>
-                <Text style={styles.promptsTitle}>Приклади запитів</Text>
+                <Text style={styles.promptsTitle}>ПРИКЛАДИ ЗАПИТІВ</Text>
                 {quickPrompts.map((prompt) => (
                   <Pressable
                     key={prompt}
                     onPress={() => send(prompt)}
-                    disabled={!enabled || sending || !historyLoaded}
+                    disabled={!canSend}
                     accessibilityRole="button"
-                    style={[styles.prompt, (!enabled || sending) && styles.promptDisabled]}
+                    style={[styles.prompt, !canSend && styles.promptDisabled]}
                   >
                     <Text style={styles.promptText}>{prompt}</Text>
                   </Pressable>
@@ -254,7 +237,7 @@ export function ChatScreen() {
         }
       />
 
-      <View style={[styles.footer, { paddingBottom: 12 }]}>
+      <View style={styles.footer}>
         {enabled === false && (
           <Text style={styles.notice}>
             {statusFailed
@@ -267,12 +250,28 @@ export function ChatScreen() {
             {error}
           </Text>
         )}
+        {/* Короткі підказки лишаються й посеред розмови. */}
+        {started && !sending && (
+          <View style={styles.chips}>
+            {quickChips.map((chip) => (
+              <Pressable
+                key={chip}
+                onPress={() => send(chip)}
+                disabled={!canSend}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.chip, !canSend && styles.promptDisabled, pressed && styles.pressed]}
+              >
+                <Text style={styles.chipText}>{chip}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
         <View style={styles.inputRow}>
           <TextInput
             value={input}
             onChangeText={setInput}
-            editable={!!enabled && !sending && historyLoaded}
-            placeholder="Запитайте про свої витрати…"
+            editable={canSend}
+            placeholder="Запитайте про свої гроші…"
             placeholderTextColor={theme.muted}
             style={styles.input}
             maxLength={1000}
@@ -282,12 +281,12 @@ export function ChatScreen() {
           />
           <Pressable
             onPress={() => send(input)}
-            disabled={!enabled || sending || !historyLoaded || !input.trim()}
+            disabled={!canSend || !input.trim()}
             accessibilityRole="button"
             accessibilityLabel="Надіслати"
-            style={[styles.sendButton, (!enabled || sending || !input.trim()) && styles.sendDisabled]}
+            style={[styles.sendButton, (!canSend || !input.trim()) && styles.sendDisabled]}
           >
-            {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="arrow-up" size={20} color="#fff" />}
+            {sending ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="arrow-up" size={22} color="#fff" />}
           </Pressable>
         </View>
       </View>
@@ -297,103 +296,104 @@ export function ChatScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: theme.bg },
+  pressed: { opacity: 0.75 },
+  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 18, paddingBottom: 14 },
+  headerText: { flex: 1 },
+  title: { fontSize: 30, fontFamily: fonts.display, color: theme.ink, letterSpacing: -0.8 },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
+  statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.positive },
+  statusDotOff: { backgroundColor: theme.gold },
+  subtitle: { fontSize: 13, color: theme.inkSoft },
   restart: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 50,
+    height: 50,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: theme.oliveTint,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.line,
   },
-  list: { paddingHorizontal: 16, paddingBottom: 12, gap: 10 },
+  list: { paddingHorizontal: 16, paddingBottom: 12, gap: 12 },
   userWrap: { alignItems: "flex-end" },
-  botWrap: { alignItems: "flex-start" },
+  botWrap: { alignItems: "stretch" },
   userBubble: {
     maxWidth: "88%",
-    backgroundColor: theme.olive,
-    borderRadius: 16,
-    borderBottomRightRadius: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    backgroundColor: theme.night,
+    borderRadius: 22,
+    borderBottomRightRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   botBubble: {
-    maxWidth: "92%",
+    alignSelf: "flex-start",
+    maxWidth: "94%",
     backgroundColor: theme.surface,
-    borderRadius: 16,
-    borderBottomLeftRadius: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderRadius: 22,
+    borderBottomLeftRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
     borderWidth: 1,
     borderColor: theme.lineSoft,
   },
-  userText: { color: "#fff", fontSize: 14, lineHeight: 20 },
-  botText: { color: theme.inkSoft, fontSize: 14, lineHeight: 21 },
-  details: {
-    maxWidth: "92%",
-    marginTop: 6,
-    marginLeft: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 10,
-    backgroundColor: theme.oliveTint,
-    gap: 3,
-  },
-  detailsTitle: { color: theme.oliveDeep, fontSize: 12, fontWeight: "600", marginBottom: 2 },
-  detailsText: { color: theme.oliveDeep, fontSize: 12, lineHeight: 17 },
-  detailsMeta: { color: theme.olive, fontSize: 11, marginTop: 4 },
-  info: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+  userText: { color: "#fff", fontSize: 15, lineHeight: 21 },
+  botText: { color: theme.ink, fontSize: 15, lineHeight: 22 },
+  found: {
+    marginTop: 8,
     borderWidth: 1,
+    borderStyle: "dashed",
     borderColor: theme.line,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 6,
-    marginLeft: 6,
+    borderRadius: 20,
+    padding: 14,
+    gap: 10,
   },
-  infoActive: { backgroundColor: theme.olive, borderColor: theme.olive },
-  infoText: { color: theme.muted, fontSize: 11, fontWeight: "700", fontStyle: "italic" },
-  infoTextActive: { color: "#fff" },
+  foundTitle: { color: theme.muted, fontSize: 11, fontFamily: fonts.mono, letterSpacing: 1.6 },
+  foundRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  foundNote: { flex: 1, color: theme.ink, fontSize: 14 },
+  foundAmount: { color: theme.ink, fontSize: 13, fontFamily: fonts.monoMedium },
+  foundMore: { color: theme.muted, fontSize: 12 },
   thinking: { color: theme.muted, fontSize: 12, marginTop: 8, marginLeft: 4 },
   prompts: { marginTop: 16, gap: 8 },
-  promptsTitle: { fontSize: 11, color: theme.muted, textTransform: "uppercase", fontWeight: "600" },
+  promptsTitle: { fontSize: 11, color: theme.muted, fontFamily: fonts.mono, letterSpacing: 1.6 },
   prompt: {
     borderWidth: 1,
     borderStyle: "dashed",
     borderColor: theme.line,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingVertical: 12,
   },
   promptDisabled: { opacity: 0.5 },
-  promptText: { color: theme.muted, fontSize: 13 },
-  footer: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: theme.lineSoft,
+  promptText: { color: theme.inkSoft, fontSize: 14 },
+  footer: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 8 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
     backgroundColor: theme.surface,
-    gap: 8,
-  },
-  notice: { backgroundColor: theme.goldTint, color: theme.gold, borderRadius: 10, padding: 9, fontSize: 12 },
-  error: { backgroundColor: theme.negativeTint, color: theme.negative, borderRadius: 10, padding: 9, fontSize: 12 },
-  inputRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  input: {
-    flex: 1,
     borderWidth: 1,
     borderColor: theme.line,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: theme.ink,
-    backgroundColor: theme.surfaceSoft,
+    borderRadius: 14,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
   },
+  chipText: { color: theme.ink, fontSize: 13 },
+  notice: { backgroundColor: theme.goldTint, color: theme.gold, borderRadius: 12, padding: 10, fontSize: 12 },
+  error: { backgroundColor: theme.negativeTint, color: theme.negative, borderRadius: 12, padding: 10, fontSize: 12 },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.line,
+    borderRadius: 24,
+    padding: 6,
+    paddingLeft: 16,
+  },
+  input: { flex: 1, paddingVertical: 10, fontSize: 15, color: theme.ink },
   sendButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 46,
+    height: 46,
+    borderRadius: 16,
     backgroundColor: theme.olive,
     alignItems: "center",
     justifyContent: "center",
