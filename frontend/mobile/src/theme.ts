@@ -17,6 +17,22 @@ export const theme = {
   positive: "#5B8C50",
   gold: "#A07A1F",
   goldTint: "#FBF3DF",
+  // Темні картки — головна сума й асистент — і кремовий акцент на них.
+  forest: "#3B4727",
+  night: "#1C2116",
+  cream: "#EFE6CC",
+  oliveSoft: "#A9B98A",
+} as const;
+
+/**
+ * Шрифти завантажує App.tsx. Unbounded — для заголовків і великих сум,
+ * JetBrains Mono — для дрібних підписів і чисел у рядках, як на десктопі.
+ */
+export const fonts = {
+  display: "Unbounded_600SemiBold",
+  displayBold: "Unbounded_700Bold",
+  mono: "JetBrainsMono_400Regular",
+  monoMedium: "JetBrainsMono_500Medium",
 } as const;
 
 export const CATEGORY_COLORS_FALLBACK = theme.muted;

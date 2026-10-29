@@ -9,18 +9,22 @@
     "ios": "expo start --ios"
   },
   "dependencies": {
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@expo-google-fonts/unbounded": "^0.4.1",
     "@expo/vector-icons": "^15.0.2",
     "@finance/shared": "^0.1.0",
-    "expo": "~57.0.0",
-    "expo-constants": "~57.0.22",
-    "expo-secure-store": "~57.0.4",
-    "expo-status-bar": "~57.0.1",
-    "react": "19.2.3",
-    "react-native": "0.86.3",
-    "react-native-safe-area-context": "~5.7.0"
+    "@types/react": "~19.3.0",
+    "expo": "~58.0.21",
+    "expo-constants": "~58.0.14",
+    "expo-font": "~58.0.11",
+    "expo-secure-store": "~58.0.2",
+    "expo-status-bar": "~58.0.4",
+    "react": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.10.1"
   },
   "devDependencies": {
-    "@types/react": "~19.2.0",
+    "@types/react": "~19.3.0",
     "typescript": "~6.0.3"
   }
 }

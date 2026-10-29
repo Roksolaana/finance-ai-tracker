@@ -1,6 +1,9 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useFonts } from "expo-font";
+import { Unbounded_600SemiBold, Unbounded_700Bold } from "@expo-google-fonts/unbounded";
+import { JetBrainsMono_400Regular, JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
 import { AuthProvider, useAuth } from "@/AuthContext";
 import { theme } from "@/theme";
 import { AuthScreen } from "@/screens/AuthScreen";
@@ -38,6 +41,21 @@ function Gate() {
 }
 
 export default function App() {
+  const [fontsLoaded, fontsError] = useFonts({
+    Unbounded_600SemiBold,
+    Unbounded_700Bold,
+    JetBrainsMono_400Regular,
+    JetBrainsMono_500Medium,
+  });
+  // Якщо шрифти не завантажились, не блокуємо застосунок — лишаться системні.
+  if (!fontsLoaded && !fontsError) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={theme.olive} />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
