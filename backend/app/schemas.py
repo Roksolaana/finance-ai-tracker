@@ -240,6 +240,25 @@ class CategorySuggestion(BaseModel):
     confidence: float
 
 
+class BudgetWarning(BaseModel):
+    """Витрати категорії за місяць дійшли до 80% ліміту або перевищили його."""
+
+    category: str
+    month: str
+    limit: float
+    spent: float
+    used_percent: int
+    over_by: float
+    # Готовий текст для сповіщення, складений кодом із цих самих чисел.
+    message: str
+
+
+class TransactionCreated(TransactionRead):
+    """Створена транзакція й, якщо треба, попередження про ліміт."""
+
+    budget_warning: BudgetWarning | None = None
+
+
 class TransactionList(BaseModel):
     """Обгортка для списку транзакцій з пагінацією."""
 

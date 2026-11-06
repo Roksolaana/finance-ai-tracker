@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { AUTO_CATEGORY_CONFIDENCE, EXPENSE_CATEGORIES, MOOD_TAGS, dayKey, type MoodTag, type Transaction, type TransactionCategory } from "@finance/shared";
 import { transactionsApi } from "@/api";
+import { notifyLocally } from "@/notify";
 import { categoryColor, categoryIcon, dayTitle } from "@/format";
 import { useNav, useScreen } from "@/navigation/context";
 import { ScreenHeader, ui } from "@/ui";
@@ -182,14 +183,16 @@ export function AddScreen({
       spent_at: when.toISOString(),
     };
     try {
-      const saved = edit ? await transactionsApi.update(edit.id, input) : await transactionsApi.create(input);
+      const created = edit ? null : await transactionsApi.create(input);
+      const saved = created ?? (await transactionsApi.update(edit!.id, input));
       refresh();
       onSaved?.(saved);
       close(screen.id);
-      showToast({
-        kind: "success",
-        text: edit ? "Зміни збережено" : kind === "income" ? "Дохід додано" : "Витрату додано",
-      });
+      const done = edit ? "Зміни збережено" : kind === "income" ? "Дохід додано" : "Витрату додано";
+      const warning = created?.budget_warning?.message;
+      // Без дозволу на сповіщення попередження не губиться, а йде в toast.
+      const notified = warning ? await notifyLocally("Ліміт бюджету", warning) : false;
+      showToast({ kind: "success", text: warning && !notified ? `${done}. ${warning}` : done });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося зберегти. Перевірте зʼєднання");
       setSaving(false);

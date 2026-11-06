@@ -17,9 +17,12 @@ from app.llm import is_configured
 from app.parsing import parse
 from app.ratelimit import RateLimiter
 from app.categorize import suggest_category
+from app.limits import budget_warning
 from app.schemas import (
+    BudgetWarning,
     CategorySuggestion,
     ParseRequest,
+    TransactionCreated,
     TransactionCreate,
     TransactionDraft,
     TransactionList,
@@ -39,7 +42,7 @@ _parse_requests = RateLimiter(window=600.0)
 
 @router.post(
     "/",
-    response_model=TransactionRead,
+    response_model=TransactionCreated,
     status_code=status.HTTP_201_CREATED,
     summary="Додати транзакцію",
 )
@@ -47,8 +50,11 @@ async def create_transaction(
     payload: TransactionCreate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> Transaction:
+) -> TransactionCreated:
     """Створює нову транзакцію.
+
+    Якщо це витрата і в категорії вже витрачено щонайменше 80% місячного
+    ліміту, у відповіді є `budget_warning` — клієнт показує сповіщення.
 
     Якщо `spent_at` не вказано — підставляє поточний UTC-час. Для нотатки
     одразу рахується ембединг, щоб запис був доступний семантичному пошуку.
@@ -65,7 +71,15 @@ async def create_transaction(
     db.add(transaction)
     await db.commit()
     await db.refresh(transaction)
-    return transaction
+    # Рахуємо вже після збереження: нова витрата входить у суму місяця.
+    warning = (
+        await budget_warning(db, user.id, transaction.category, transaction.spent_at)
+        if transaction.amount < 0
+        else None
+    )
+    created = TransactionCreated.model_validate(transaction)
+    created.budget_warning = BudgetWarning(**warning) if warning else None
+    return created
 
 
 @router.post("/parse", response_model=TransactionDraft, summary="Чернетка транзакції з опису")

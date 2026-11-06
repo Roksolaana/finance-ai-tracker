@@ -113,6 +113,18 @@ export interface CategoryMonthRow {
 }
 
 /** Відповідь `GET /stats/monthly` — дані для сторінки «Аналітика». */
+/** Витрати категорії за місяць дійшли до 80% ліміту або перевищили його. */
+export interface BudgetWarning {
+  category: string;
+  month: string;
+  limit: number;
+  spent: number;
+  used_percent: number;
+  over_by: number;
+  /** Готовий текст сповіщення, складений сервером із цих самих чисел. */
+  message: string;
+}
+
 /** Регулярний платіж: серія витрат із близькою сумою раз на місяць. */
 export interface RecurringPayment {
   name: string;

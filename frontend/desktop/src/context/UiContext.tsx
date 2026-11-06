@@ -8,7 +8,7 @@ export interface Toast {
   message: string;
   action?: { label: string; onClick: () => void };
   /** Помилки мають виглядати інакше, ніж «Збережено», — інакше їх не помічають. */
-  tone: "success" | "error";
+  tone: "success" | "error" | "warning";
 }
 
 interface UiContextValue {
@@ -28,6 +28,8 @@ interface UiContextValue {
   toasts: Toast[];
   showToast: (message: string, action?: Toast["action"]) => void;
   showError: (message: string) => void;
+  /** Попередження, яке важливо помітити: ліміт майже чи вже вичерпано. */
+  showWarning: (message: string) => void;
   dismissToast: (id: number) => void;
 }
 
@@ -79,6 +81,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
     [pushToast],
   );
   const showError = useCallback((message: string) => pushToast({ message, tone: "error" }), [pushToast]);
+  const showWarning = useCallback((message: string) => pushToast({ message, tone: "warning" }), [pushToast]);
 
   const value = useMemo<UiContextValue>(
     () => ({
@@ -101,9 +104,10 @@ export function UiProvider({ children }: { children: ReactNode }) {
       toasts,
       showToast,
       showError,
+      showWarning,
       dismissToast,
     }),
-    [form, detailsId, budgetsOpen, profileOpen, chatOpen, toasts, showToast, showError, dismissToast],
+    [form, detailsId, budgetsOpen, profileOpen, chatOpen, toasts, showToast, showError, showWarning, dismissToast],
   );
 
   return <UiContext.Provider value={value}>{children}</UiContext.Provider>;

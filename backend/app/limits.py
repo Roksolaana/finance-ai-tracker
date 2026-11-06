@@ -14,7 +14,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import BudgetHistory
+from app.models import BudgetHistory, Transaction
+from app.timeutils import TZ, local_midnight, next_month
 
 
 async def limits_for_month(
@@ -93,3 +94,75 @@ async def record_limit(
             set_={"monthly_limit": statement.excluded.monthly_limit, "created_at": func.now()},
         )
     )
+
+
+# З якої частки ліміту попереджати. Раніше за 80% попередження нічого не
+# дає, пізніше — його вже нема коли врахувати до кінця місяця.
+WARNING_SHARE = Decimal("0.8")
+
+_MONTHS = (
+    "січень", "лютий", "березень", "квітень", "травень", "червень",
+    "липень", "серпень", "вересень", "жовтень", "листопад", "грудень",
+)
+
+
+def _money(value: Decimal) -> str:
+    """«1 280 ₴» або «1 280,50 ₴» — у тому самому вигляді, що й в інтерфейсі."""
+    rounded = value.quantize(Decimal("0.01"))
+    whole, cents = divmod(abs(rounded), 1)
+    text = f"{int(whole):,}".replace(",", " ")
+    if cents:
+        text += f",{int(cents * 100):02d}"
+    return f"{text} ₴"
+
+
+async def budget_warning(
+    db: AsyncSession, user_id: uuid.UUID, category: str, spent_at: datetime.datetime
+) -> dict | None:
+    """Попередження, якщо витрати категорії за місяць дійшли до 80% ліміту.
+
+    Місяць — той, у який потрапила витрата, а не поточний: запис заднім
+    числом звіряється з лімітом і витратами свого місяця. Усі числа й текст
+    складає код із даних бази.
+    """
+    first_day = spent_at.astimezone(TZ).date().replace(day=1)
+    limit = (await limits_for_month(db, user_id, first_day)).get(category)
+    if not limit:
+        return None
+    start = local_midnight(first_day)
+    end = local_midnight(datetime.date(*next_month(first_day.year, first_day.month), 1))
+    spent = Decimal(
+        (
+            await db.execute(
+                select(func.coalesce(func.sum(-Transaction.amount), 0)).where(
+                    Transaction.user_id == user_id,
+                    Transaction.category == category,
+                    Transaction.amount < 0,
+                    Transaction.spent_at >= start,
+                    Transaction.spent_at < end,
+                )
+            )
+        ).scalar_one()
+    )
+    if spent < limit * WARNING_SHARE:
+        return None
+
+    over_by = max(spent - limit, Decimal(0))
+    used_percent = int(spent / limit * 100 + Decimal("0.5"))
+    month_name = _MONTHS[first_day.month - 1]
+    if over_by > 0:
+        message = (
+            f"Ліміт на «{category}» за {month_name} перевищено на {_money(over_by)}: "
+            f"{_money(spent)} з {_money(limit)}"
+        )
+    else:
+        message = f"Витрачено {used_percent}% ліміту на «{category}» за {month_name}: {_money(spent)} з {_money(limit)}"
+    return {
+        "category": category,
+        "month": first_day.strftime("%Y-%m"),
+        "limit": float(limit),
+        "spent": float(spent),
+        "used_percent": used_percent,
+        "over_by": float(over_by),
+        "message": message,
+    }

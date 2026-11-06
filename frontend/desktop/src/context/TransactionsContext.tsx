@@ -5,6 +5,7 @@ import {
   createTransactionsApi,
   monthKey,
   type BudgetLimits,
+  type BudgetWarning,
   type MonthStats,
   type Transaction,
   type TransactionInput,
@@ -23,7 +24,8 @@ interface TransactionsContextValue {
   /** Росте з кожною зміною даних — щоб сторінки могли перезапитати свої агрегати. */
   dataVersion: number;
   reload: () => Promise<void>;
-  addTransaction: (input: TransactionInput) => Promise<void>;
+  /** Повертає попередження про ліміт категорії, якщо сервер його дав. */
+  addTransaction: (input: TransactionInput) => Promise<BudgetWarning | null>;
   updateTransaction: (id: string, input: TransactionInput) => Promise<void>;
   deleteTransaction: (id: string) => Promise<Transaction | undefined>;
   restoreTransaction: (transaction: Transaction) => Promise<void>;
@@ -165,6 +167,7 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
         // тоді без фільтра він зʼявився б у списку двічі.
         setTransactions((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
         invalidateStats();
+        return created.budget_warning;
       },
       updateTransaction: async (id, input) => {
         const updated = await trackMutation(() => api.update(id, input));

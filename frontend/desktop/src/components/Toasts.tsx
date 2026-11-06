@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, X } from "lucide-react";
+import { CircleAlert, CircleCheck, TriangleAlert, X } from "lucide-react";
 import { useUi } from "../context/UiContext";
 
 export function Toasts() {
@@ -13,13 +13,15 @@ export function Toasts() {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          role={toast.tone === "error" ? "alert" : undefined}
+          role={toast.tone === "success" ? undefined : "alert"}
           className={`pointer-events-auto flex items-center gap-3 rounded-2xl py-2.5 pl-4 pr-2 text-sm text-white shadow-pop animate-[toast-in_.2s_ease-out] ${
-            toast.tone === "error" ? "bg-negative" : "bg-ink"
+            toast.tone === "error" ? "bg-negative" : toast.tone === "warning" ? "bg-gold" : "bg-ink"
           }`}
         >
           {toast.tone === "error" ? (
             <CircleAlert size={17} className="text-white" />
+          ) : toast.tone === "warning" ? (
+            <TriangleAlert size={17} className="text-white" />
           ) : (
             <CircleCheck size={17} className="text-olive-soft" />
           )}

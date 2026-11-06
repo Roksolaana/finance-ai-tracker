@@ -1,5 +1,5 @@
 import { API_URL, CATEGORIES, MOOD_TAGS } from "../constants";
-import type { MoodTag, Transaction, TransactionCategory } from "../types";
+import type { BudgetWarning, MoodTag, Transaction, TransactionCategory } from "../types";
 import { request } from "./client";
 
 export interface TransactionInput {
@@ -85,8 +85,13 @@ export function createTransactionsApi(baseUrl: string = API_URL) {
       );
       return data.items.map(toTransaction);
     },
-    async create(input: TransactionInput): Promise<Transaction> {
-      return toTransaction(await request<ApiTransaction>(`${root}/`, { method: "POST", body: JSON.stringify(input) }));
+    /** Створена транзакція й, якщо треба, попередження про ліміт її категорії. */
+    async create(input: TransactionInput): Promise<Transaction & { budget_warning: BudgetWarning | null }> {
+      const created = await request<ApiTransaction & { budget_warning?: BudgetWarning | null }>(`${root}/`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+      return { ...toTransaction(created), budget_warning: created.budget_warning ?? null };
     },
     async update(id: string, input: TransactionInput): Promise<Transaction> {
       return toTransaction(await request<ApiTransaction>(`${root}/${id}`, { method: "PUT", body: JSON.stringify(input) }));

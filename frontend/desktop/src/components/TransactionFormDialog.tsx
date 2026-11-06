@@ -26,7 +26,7 @@ function combineDateWithTime(date: string, timeSource: Date) {
 }
 
 export function TransactionFormDialog() {
-  const { form, closeForm, showToast } = useUi();
+  const { form, closeForm, showToast, showWarning } = useUi();
   const { addTransaction, updateTransaction, selectedMonth, setSelectedMonth } = useTransactions();
   const editing = form?.mode === "edit" ? form.transaction : null;
 
@@ -165,11 +165,12 @@ export function TransactionFormDialog() {
     };
 
     setSaving(true);
+    let warning: string | null = null;
     try {
       if (editing) {
         await updateTransaction(editing.id, input);
       } else {
-        await addTransaction(input);
+        warning = (await addTransaction(input))?.message ?? null;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося зберегти");
@@ -190,6 +191,8 @@ export function TransactionFormDialog() {
         onClick: () => setSelectedMonth(savedMonth),
       });
     }
+    // Після підтвердження збереження: попередження важливіше, тож воно останнє.
+    if (warning) showWarning(warning);
     closeForm();
   };
 
