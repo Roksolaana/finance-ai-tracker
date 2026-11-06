@@ -6,6 +6,8 @@
 """
 
 import datetime
+from collections.abc import Iterator
+from contextlib import contextmanager
 from zoneinfo import ZoneInfo
 
 from app.constants import MAX_YEAR, MIN_YEAR
@@ -20,8 +22,32 @@ def local_midnight(day: datetime.date) -> datetime.datetime:
     return datetime.datetime.combine(day, datetime.time.min, tzinfo=TZ)
 
 
+# Зафіксована дата для оцінки асистента (див. frozen_today). У звичайній
+# роботі завжди None.
+_frozen_today: datetime.date | None = None
+
+
 def local_today() -> datetime.date:
+    if _frozen_today is not None:
+        return _frozen_today
     return datetime.datetime.now(TZ).date()
+
+
+@contextmanager
+def frozen_today(day: datetime.date) -> Iterator[None]:
+    """Підміняє «сьогодні» для всього застосунку на час блоку.
+
+    Для eval: очікувані аргументи («минулий місяць» = вересень) мають бути
+    сталими, а модель рахує їх від дати в system_prompt, інструменти — від
+    local_today. Обидва беруть дату звідси, тож підміна в одному місці
+    діє на обидва й розійтися вони не можуть.
+    """
+    global _frozen_today
+    previous, _frozen_today = _frozen_today, day
+    try:
+        yield
+    finally:
+        _frozen_today = previous
 
 
 def in_date_range(day: datetime.date) -> bool:

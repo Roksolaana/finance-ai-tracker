@@ -25,13 +25,17 @@ def is_configured() -> bool:
 async def chat_completion(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
-    """Один виклик моделі. Повертає об'єкт message з відповіді."""
+    """Один виклик моделі. Повертає об'єкт message з відповіді.
+
+    `model` — для порівняння моделей в eval; застосунок завжди бере LLM_MODEL.
+    """
     if not is_configured():
         raise LLMUnavailable("Не задано GROQ_API_KEY")
 
     body: dict[str, Any] = {
-        "model": settings.LLM_MODEL,
+        "model": model or settings.LLM_MODEL,
         "messages": messages,
         # 0 — щоб на однаковий запит модель стабільно обирала той самий
         # інструмент: інакше оцінку маршрутизації не можна відтворити.

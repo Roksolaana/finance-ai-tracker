@@ -14,6 +14,7 @@ import re
 import logging
 import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -95,57 +96,8 @@ async def chat(
         return await _remember(db, user.id, payload.message, reply)
 
     messages.append(first)
-    # Модель може зробити кілька викликів за раз. Запамʼятовуємо перший
-    # успішний: раніше зберігався лише останній, і якщо він падав, інтерфейс
-    # показував назву одного інструмента поруч із записами від іншого.
-    outcome: ToolOutcome | None = None
-    outcome_tool = ""
-    seen_transactions: list = []
-    seen_ids: set = set()
-
-    for call in calls:
-        tool_name = call["function"]["name"]
-        handler = HANDLERS.get(tool_name)
-        if handler is None:
-            result = {"error": f"Невідомий інструмент {tool_name}"}
-        else:
-            try:
-                arguments = json.loads(call["function"]["arguments"] or "{}")
-            except json.JSONDecodeError:
-                arguments = {}
-            try:
-                current = await handler(db, user.id, **arguments)
-                result = current.payload
-                if outcome is None:
-                    outcome, outcome_tool = current, tool_name
-                # Кілька викликів часто знаходять ті самі записи (сума за
-                # місяць і перелік за той самий місяць) — у відповіді кожен
-                # має бути один раз, у порядку першої появи.
-                for transaction in current.transactions:
-                    if transaction.id not in seen_ids:
-                        seen_ids.add(transaction.id)
-                        seen_transactions.append(transaction)
-            except ToolArgumentError as exc:
-                # Зрозуміла проблема з аргументом — текст піде моделі, і вона
-                # пояснить користувачу, що саме не так.
-                result = {"error": str(exc)}
-            except Exception:
-                # Будь-яка інша помилка інструмента не має валити весь запит:
-                # модель отримує позначку про збій і відповідає словами.
-                logger.exception("Інструмент %s впав на аргументах %s", tool_name, arguments)
-                result = {"error": "Не вдалося виконати запит до даних"}
-                # Після помилки бази транзакція зламана, і наступний
-                # інструмент у тій самій сесії впав би теж.
-                await db.rollback()
-
-        messages.append(
-            {
-                "role": "tool",
-                "tool_call_id": call["id"],
-                "name": tool_name,
-                "content": json.dumps(result, ensure_ascii=False, default=str),
-            }
-        )
+    run = await run_tool_calls(db, user.id, calls)
+    messages.extend(run.messages)
 
     # Інструменти вже відпрацювали. Знайдені записи після close відʼєднані
     # від сесії, але їхні поля вже завантажені, тож для відповіді їх досить,
@@ -159,11 +111,85 @@ async def chat(
 
     reply = _response(
         final.get("content") or "",
-        (outcome_tool, outcome.kind) if outcome else None,
-        seen_transactions,
+        (run.tool_name, run.outcome.kind) if run.outcome else None,
+        run.transactions,
         started,
     )
     return await _remember(db, user.id, payload.message, reply)
+
+
+@dataclass
+class ToolRun:
+    """Що дали виклики інструментів у відповідь на один запит."""
+
+    # Повідомлення role=tool — у тому самому порядку, що й виклики.
+    messages: list[dict]
+    # Перший успішний результат: за ним інтерфейс підписує, звідки відповідь.
+    outcome: ToolOutcome | None
+    tool_name: str
+    transactions: list
+    # Те, що побачила модель, — для перевірки, що числа відповіді звідти.
+    payloads: list[dict]
+
+
+async def run_tool_calls(db: AsyncSession, user_id: uuid.UUID, calls: list[dict]) -> ToolRun:
+    """Виконує виклики інструментів, які обрала модель.
+
+    Окремою функцією, бо цим самим шляхом іде оцінка асистента: якби eval мав
+    власну копію циклу, він міряв би не те, що бачить користувач.
+    """
+    run = ToolRun(messages=[], outcome=None, tool_name="", transactions=[], payloads=[])
+    seen_ids: set = set()
+
+    # Модель може зробити кілька викликів за раз. Запамʼятовуємо перший
+    # успішний: раніше зберігався лише останній, і якщо він падав, інтерфейс
+    # показував назву одного інструмента поруч із записами від іншого.
+    for call in calls:
+        tool_name = call["function"]["name"]
+        handler = HANDLERS.get(tool_name)
+        arguments: dict = {}
+        if handler is None:
+            result = {"error": f"Невідомий інструмент {tool_name}"}
+        else:
+            try:
+                arguments = json.loads(call["function"]["arguments"] or "{}")
+            except json.JSONDecodeError:
+                arguments = {}
+            try:
+                current = await handler(db, user_id, **arguments)
+                result = current.payload
+                if run.outcome is None:
+                    run.outcome, run.tool_name = current, tool_name
+                # Кілька викликів часто знаходять ті самі записи (сума за
+                # місяць і перелік за той самий місяць) — у відповіді кожен
+                # має бути один раз, у порядку першої появи.
+                for transaction in current.transactions:
+                    if transaction.id not in seen_ids:
+                        seen_ids.add(transaction.id)
+                        run.transactions.append(transaction)
+            except ToolArgumentError as exc:
+                # Зрозуміла проблема з аргументом — текст піде моделі, і вона
+                # пояснить користувачу, що саме не так.
+                result = {"error": str(exc)}
+            except Exception:
+                # Будь-яка інша помилка інструмента не має валити весь запит:
+                # модель отримує позначку про збій і відповідає словами.
+                logger.exception("Інструмент %s впав на аргументах %s", tool_name, arguments)
+                result = {"error": "Не вдалося виконати запит до даних"}
+                # Після помилки бази транзакція зламана, і наступний
+                # інструмент у тій самій сесії впав би теж.
+                await db.rollback()
+
+        run.payloads.append(result)
+        run.messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": call["id"],
+                "name": tool_name,
+                "content": json.dumps(result, ensure_ascii=False, default=str),
+            }
+        )
+    return run
 
 
 async def _recent_context(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
@@ -286,7 +312,7 @@ _HEADING = re.compile(r"^[ \t]*#{1,6}\s*", re.MULTILINE)
 _BLANKS = re.compile(r"\n{3,}")
 
 
-def _plain_text(content: str) -> str:
+def plain_text(content: str) -> str:
     """Прибирає markdown із відповіді моделі.
 
     Інтерфейс показує текст як є, тож зірочки й решітки видно користувачу.
@@ -301,7 +327,7 @@ def _plain_text(content: str) -> str:
 
 
 def _response(content: str, tool: tuple[str, str] | None, transactions: list, started: float) -> ChatResponse:
-    content = _plain_text(content)
+    content = plain_text(content)
     duration_ms = int((time.perf_counter() - started) * 1000)
     # Та сама нотатка трапляється в кількох транзакціях; для показу досить
     # перших, але порахована сума стосується всіх знайдених.
