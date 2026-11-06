@@ -1,0 +1,60 @@
+{"tool": "query_transactions", "arguments": {"aggregation": "sum", "date_from": "2026-09-01", "date_to": "2026-09-30", "tx_type": "expense"}, "answer": null, "payloads": null, "seconds": 6.48, "question": "Скільки всього я витратила у вересні?"}
+{"tool": "query_transactions", "arguments": {"date_from": "2026-09-01", "date_to": "2026-09-30", "category": "покупки", "aggregation": "sum"}, "answer": null, "payloads": null, "seconds": 4.26, "question": "Скільки я витратила на продукти минулого місяця?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 5.21, "question": "Яка категорія найбільша цього місяця?"}
+{"tool": "query_transactions", "arguments": {"date_from": "2026-10-09", "date_to": "2026-10-16", "tx_type": null}, "answer": null, "payloads": null, "seconds": 3.94, "question": "Скільки транзакцій я зробила цього тижня?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 2.81, "question": "Скільки я заробила за цей рік?"}
+{"tool": "query_transactions", "arguments": {"date_to": "2026-10-31", "category": "транспорт", "date_from": "2026-10-01"}, "answer": null, "payloads": null, "seconds": 3.77, "question": "Покажи мої витрати на транспорт за жовтень"}
+{"tool": "find_recurring", "arguments": {}, "answer": null, "payloads": null, "seconds": 2.36, "question": "Скільки я витрачаю на підписки щомісяця?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 4.74, "question": "Який мій баланс за останні три місяці?"}
+{"tool": "query_transactions", "arguments": {"date_from": "2026-10-01", "date_to": "2026-10-31", "aggregation": "by_category", "tx_type": "expense"}, "answer": null, "payloads": null, "seconds": 4.48, "question": "Покажи найбільші витрати за цей місяць"}
+{"tool": "query_transactions", "arguments": {"max_amount": null, "min_amount": 1000, "tx_type": "expense", "aggregation": "sum", "category": null, "date_from": null, "date_to": null}, "answer": null, "payloads": null, "seconds": 4.49, "question": "Покажи всі витрати понад тисячу гривень"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 3.71, "question": "Я більше витрачаю на їжу чи на транспорт?"}
+{"tool": "query_transactions", "arguments": {"aggregation": "sum", "date_from": "2026-08-01", "date_to": "2026-08-31", "category": "кафе"}, "answer": null, "payloads": null, "seconds": 4.42, "question": "скіки я потратила на кафешки в серпні"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 7.52, "question": "скільи витратла вчора"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 5.78, "question": "шо по витратах за минулий тиждень?"}
+{"tool": "query_transactions", "arguments": {"date_from": "2026-09-01", "date_to": "2026-09-30", "category": "комунальні"}, "answer": null, "payloads": null, "seconds": 4.13, "question": "Скільки пішло на комуналку у вересні"}
+{"tool": "check_budgets", "arguments": {"month": "2026-10"}, "answer": null, "payloads": null, "seconds": 2.83, "question": "Де я перевищила ліміт цього місяця?"}
+{"tool": "check_budgets", "arguments": {"month": "2026-10"}, "answer": null, "payloads": null, "seconds": 3.37, "question": "Скільки ще можна витратити на кафе до кінця місяця?"}
+{"tool": "check_budgets", "arguments": {"month": "2026-09"}, "answer": null, "payloads": null, "seconds": 2.89, "question": "Чи вклалась я в ліміти у вересні?"}
+{"tool": "check_budgets", "arguments": {"month": "2026-10"}, "answer": null, "payloads": null, "seconds": 2.43, "question": "шо там з лімітом на їжу"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 9.85, "question": "Наскільки я вилізла за бюджет на розваги?"}
+{"tool": "hybrid_search_and_sum", "arguments": {"date_from": "2026-10-01", "date_to": "2026-10-15", "query_text": "втому через стрес"}, "answer": null, "payloads": null, "seconds": 4.09, "question": "Знайди витрати, які я зробила через стрес чи втому"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 8.01, "question": "Які покупки я робила для навчання?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 11.95, "question": "Знайди, коли я купувала щось у подарунок"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 6.92, "question": "Покажи витрати, пов'язані з друзями"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 5.77, "question": "Чи були витрати на щось імпульсивне?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 9.25, "question": "Знайди покупки, про які я потім шкодувала"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 8.3, "question": "Де я купувала каву з собою?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 10.15, "question": "Що я купувала, коли нервувала в жовтні?"}
+{"tool": "hybrid_search_and_sum", "arguments": {"query_text": "нічні дедлайни", "date_from": "2026-10-01", "date_to": "2026-10-15"}, "answer": null, "payloads": null, "seconds": 4.37, "question": "покажи шо я брала на нічних дедлайнах"}
+{"tool": "hybrid_search_and_sum", "arguments": {"query_text": "їздила до батьків", "date_from": "2026-01-01", "date_to": "2026-10-15"}, "answer": null, "payloads": null, "seconds": 7.18, "question": "коли я їздила до батьків?"}
+{"tool": "semantic_search_notes", "arguments": {"query_text": "спорт", "date_from": "2026-10-01", "date_to": "2026-10-15"}, "answer": null, "payloads": null, "seconds": 3.91, "question": "знайди витрати повязані зі спортом"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 4.9, "question": "Які були витрати на свята?"}
+{"tool": "semantic_search_notes", "arguments": {"query_text": "купувала в аптеці", "date_from": "2026-10-01", "date_to": "2026-10-15"}, "answer": null, "payloads": null, "seconds": 4.18, "question": "Знайди, що я купувала в аптеці"}
+{"tool": "query_transactions", "arguments": {"category": "покупки", "date_from": "2026-10-01", "date_to": "2026-10-15"}, "answer": null, "payloads": null, "seconds": 7.08, "question": "Що я купувала на ринку?"}
+{"tool": "hybrid_search_and_sum", "arguments": {"query_text": "імпульсивні покупки через стрес", "date_from": "2026-10-01", "date_to": "2026-10-15"}, "answer": null, "payloads": null, "seconds": 4.63, "question": "Скільки грошей пішло на імпульсивні покупки через стрес?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 8.07, "question": "На яку суму я замовляла доставку, коли не було сил готувати?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 8.45, "question": "Скільки я витратила на все, що пов'язано зі здоров'ям?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 4.63, "question": "Скільки коштували мої розваги з друзями?"}
+{"tool": "query_transactions", "arguments": {"date_to": "2026-10-31", "category": "кафе", "aggregation": "sum", "date_from": "2026-10-01"}, "answer": null, "payloads": null, "seconds": 4.14, "question": "Скільки я витратила на каву цього місяця?"}
+{"tool": "query_transactions", "arguments": {"aggregation": "count", "category": "транспорт", "date_from": null, "date_to": null}, "answer": null, "payloads": null, "seconds": 6.7, "question": "Скільки разів я замовляла таксі?"}
+{"tool": "query_transactions", "arguments": {"query_text": "подарунки", "aggregation": "sum", "date_from": "2026-09-01", "date_to": "2026-09-30", "category": "інше"}, "answer": null, "payloads": null, "seconds": 4.7, "question": "Скільки я потратила на подарунки у вересні?"}
+{"tool": "hybrid_search_and_sum", "arguments": {"query_text": "скіки пішло на каву з однокурсницями", "date_from": "2026-10-10", "date_to": "2026-10-15"}, "answer": null, "payloads": null, "seconds": 10.54, "question": "скіки пішло на каву з однокурсницями"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 11.42, "question": "Скільки коштує мені навчання: книжки, канцелярія, курси?"}
+{"tool": "hybrid_search_and_sum", "arguments": {"query_text": "таксі запізнювалась", "date_from": "2026-10-01", "date_to": "2026-10-16"}, "answer": null, "payloads": null, "seconds": 5.75, "question": "Скільки я витратила на таксі, коли запізнювалась?"}
+{"tool": "query_transactions", "arguments": {"date_from": "2026-01-01", "date_to": "2026-10-15", "category": "здоров'я", "tx_type": "expense"}, "answer": null, "payloads": null, "seconds": 4.54, "question": "Яка сума пішла на ліки цього року?"}
+{"tool": "query_transactions", "arguments": {"tx_type": "expense", "date_from": "2026-10-01", "date_to": "2026-10-15", "category": "їжа"}, "answer": null, "payloads": null, "seconds": 4.66, "question": "скільки витратила на перекуси між парами"}
+{"tool": "query_transactions", "arguments": {"date_from": "2026-10-16", "date_to": "2026-10-16", "category": "покупки", "tx_type": "expense"}, "answer": null, "payloads": null, "seconds": 4.59, "question": "На скільки я закупилась у секондах?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 7.14, "question": "Скільки я витрачаю на Netflix?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 6.01, "question": "Привіт!"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 8.69, "question": "Скільки коштує біткоїн?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 5.0, "question": "Яка погода завтра?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 8.4, "question": "Що ти вмієш?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 20.23, "question": "Дай пораду, як почати відкладати гроші"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 2.48, "question": "дякую, ти супер"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 8.5, "question": "Як працює кешбек у банку?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 8.3, "question": "Напиши вірш про гроші"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 11.01, "question": "Що таке інфляція?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 9.04, "question": "Як додати нову витрату?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 7.77, "question": "Хто ти?"}
+{"tool": null, "arguments": {}, "answer": null, "payloads": null, "seconds": 14.49, "question": "Розкажи анекдот"}

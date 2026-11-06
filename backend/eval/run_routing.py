@@ -226,7 +226,9 @@ async def main() -> int:
         return 1
 
     RUNS.mkdir(exist_ok=True)
-    slug = f"{args.model.replace('/', '_')}-{'answers' if args.answers else 'routing'}"
+    # Лише безпечні для імені файлу символи: «qwen2.5:7b» з двокрапкою на
+    # Windows створював не файл, а прихований потік усередині файлу «qwen2.5».
+    slug = f"{re.sub(r'[^A-Za-z0-9._-]', '_', args.model)}-{'answers' if args.answers else 'routing'}"
     cache_path = RUNS / f"{slug}.jsonl"
     done = {} if args.fresh else _load(cache_path)
     if args.fresh and cache_path.exists():
