@@ -132,3 +132,15 @@ async def test_column_comments_match_models(db):
         for column in table.columns
     }
     assert in_database == in_models
+
+
+@pytest.mark.skipif(not main.FRONTEND_DIST.is_dir(), reason="веб-клієнт не зібрано")
+async def test_index_is_not_cached_but_hashed_assets_are(client):
+    """Після нової збірки браузер не має показувати стару сторінку з кешу."""
+    page = await client.get("/")
+    assert page.status_code == 200
+    assert page.headers["cache-control"] == "no-cache"
+
+    asset = next((main.FRONTEND_DIST / "assets").glob("*.js")).name
+    script = await client.get(f"/assets/{asset}")
+    assert "immutable" in script.headers["cache-control"]

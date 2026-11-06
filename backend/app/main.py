@@ -99,6 +99,25 @@ async def health_check():
     return {"status": "ok", "database": "ok"}
 
 
+class FrontendFiles(StaticFiles):
+    """Статика веб-клієнта з правилами кешу.
+
+    index.html без Cache-Control браузер кешував за власною евристикою, і після
+    нової збірки показував стару сторінку, поки не натиснеш Ctrl+F5. Тепер він
+    щоразу звіряється з сервером (через ETag це дешево), а файли з assets/
+    мають хеш у назві — нова збірка дає нові імена, тож їх можна кешувати назавжди.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        # На Windows StaticFiles передає шлях з «\», а не «/».
+        if path.replace("\\", "/").startswith("assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif response.media_type == "text/html":
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 if FRONTEND_DIST.is_dir():
     # Монтується останнім — специфічні маршрути (/api/v1, /health) мають пріоритет.
-    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+    app.mount("/", FrontendFiles(directory=FRONTEND_DIST, html=True), name="frontend")
