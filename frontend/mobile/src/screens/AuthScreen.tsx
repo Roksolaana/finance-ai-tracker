@@ -57,7 +57,7 @@ export function AuthScreen() {
             <Text style={styles.brandName}>Крона</Text>
           </View>
           <Text style={styles.heroLabel}>ОБЛІК ОСОБИСТИХ ФІНАНСІВ</Text>
-          <Text style={styles.heroTitle}>Гроші, що ростуть кільцями</Text>
+          <Text style={styles.heroTitle}>Не лише скільки, а й чому</Text>
         </View>
 
         <View style={styles.form}>

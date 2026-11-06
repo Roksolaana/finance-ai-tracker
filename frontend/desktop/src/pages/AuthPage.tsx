@@ -62,10 +62,10 @@ export function AuthPage() {
         <div className="relative mt-auto max-w-md pb-4">
           <p className="eyebrow text-olive-soft">Облік особистих фінансів</p>
           <h2 className="mt-3 font-display text-[40px] font-semibold leading-[1.08] tracking-tight">
-            Гроші, що ростуть кільцями
+            Не лише скільки, а й чому
           </h2>
           <p className="mt-4 text-[15px] leading-relaxed text-white/75">
-            Кожен місяць, коли вдалося відкласти, — ще одне кільце, як у дерева.
+            Крона рахує суми й знаходить витрати за змістом нотаток — питайте своїми словами.
           </p>
 
           <ul className="mt-9 space-y-4">
