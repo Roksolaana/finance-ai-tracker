@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Sparkles, X } from "lucide-react";
 import {
+  AUTO_CATEGORY_CONFIDENCE,
   EXPENSE_CATEGORIES,
   MOOD_TAGS,
   createTransactionsApi,
@@ -40,12 +41,20 @@ export function TransactionFormDialog() {
   const [description, setDescription] = useState("");
   const [parsing, setParsing] = useState(false);
   const [filled, setFilled] = useState(false);
+  // Категорію обрала людина (чи вона прийшла з чернетки або редагування) —
+  // тоді підказка за нотаткою її вже не перебиває.
+  const [categoryTouched, setCategoryTouched] = useState(false);
+  const [suggested, setSuggested] = useState<TransactionCategory | null>(null);
+  const [autoCategory, setAutoCategory] = useState(false);
 
   useEffect(() => {
     if (!form) return;
     setError(null);
     setDescription("");
     setFilled(false);
+    setCategoryTouched(Boolean(editing));
+    setSuggested(null);
+    setAutoCategory(false);
     if (editing) {
       setKind(editing.amount > 0 ? "income" : "expense");
       setAmount(String(Math.abs(editing.amount)));
@@ -78,12 +87,49 @@ export function TransactionFormDialog() {
       setDate(dayKey(draft.spent_at));
       setNote(draft.note ?? "");
       setTags(draft.tags);
+      setCategoryTouched(true);
       setFilled(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося розібрати опис");
     } finally {
       setParsing(false);
     }
+  };
+
+  // Підказка категорії за нотаткою: kNN по власних записах, без LLM.
+  useEffect(() => {
+    if (!form || editing || kind !== "expense" || categoryTouched || note.trim().length < 3) {
+      setSuggested(null);
+      return;
+    }
+    let cancelled = false;
+    // Пауза, щоб не питати сервер на кожну літеру.
+    const timer = setTimeout(async () => {
+      try {
+        const hint = await parser.suggestCategory(note);
+        if (cancelled || !hint.category || hint.category === "дохід") return;
+        if (hint.confidence >= AUTO_CATEGORY_CONFIDENCE) {
+          setCategory(hint.category);
+          setAutoCategory(true);
+          setSuggested(null);
+        } else {
+          setSuggested(hint.category);
+        }
+      } catch {
+        // Підказка — дрібна зручність; без неї форма працює як раніше.
+      }
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [form, editing, kind, categoryTouched, note]);
+
+  const pickCategory = (value: TransactionCategory) => {
+    setCategory(value);
+    setCategoryTouched(true);
+    setAutoCategory(false);
+    setSuggested(null);
   };
 
   const toggleTag = (tag: MoodTag) =>
@@ -234,7 +280,7 @@ export function TransactionFormDialog() {
                       key={c}
                       type="button"
                       aria-pressed={category === c}
-                      onClick={() => setCategory(c)}
+                      onClick={() => pickCategory(c)}
                       className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left text-xs font-medium capitalize transition-all ${
                         category === c
                           ? "border-olive bg-olive-tint text-ink ring-2 ring-olive-tint"
@@ -246,6 +292,18 @@ export function TransactionFormDialog() {
                     </button>
                   ))}
                 </div>
+                {autoCategory && (
+                  <p className="mt-1.5 text-[11px] text-muted">Категорію підставлено за схожими записами — змініть, якщо не так.</p>
+                )}
+                {suggested && suggested !== category && (
+                  <button
+                    type="button"
+                    onClick={() => pickCategory(suggested)}
+                    className="mt-1.5 text-[11px] font-medium text-olive hover:underline"
+                  >
+                    Схоже на «{suggested}» — обрати
+                  </button>
+                )}
               </div>
             )}
 

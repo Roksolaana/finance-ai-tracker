@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { EXPENSE_CATEGORIES, MOOD_TAGS, dayKey, type MoodTag, type Transaction, type TransactionCategory } from "@finance/shared";
+import { AUTO_CATEGORY_CONFIDENCE, EXPENSE_CATEGORIES, MOOD_TAGS, dayKey, type MoodTag, type Transaction, type TransactionCategory } from "@finance/shared";
 import { transactionsApi } from "@/api";
 import { categoryColor, categoryIcon, dayTitle } from "@/format";
 import { useNav, useScreen } from "@/navigation/context";
@@ -76,6 +76,47 @@ export function AddScreen({
   const [description, setDescription] = useState("");
   const [parsing, setParsing] = useState(false);
   const [filled, setFilled] = useState(false);
+  // Категорію обрала людина (чи вона прийшла з чернетки або редагування) —
+  // тоді підказка за нотаткою її вже не перебиває.
+  const [categoryTouched, setCategoryTouched] = useState(Boolean(edit));
+  const [suggested, setSuggested] = useState<TransactionCategory | null>(null);
+  const [autoCategory, setAutoCategory] = useState(false);
+
+  // Підказка категорії за нотаткою: kNN по власних записах, без LLM.
+  useEffect(() => {
+    if (edit || kind !== "expense" || categoryTouched || note.trim().length < 3) {
+      setSuggested(null);
+      return;
+    }
+    let cancelled = false;
+    // Пауза, щоб не питати сервер на кожну літеру.
+    const timer = setTimeout(async () => {
+      try {
+        const hint = await transactionsApi.suggestCategory(note);
+        if (cancelled || !hint.category || hint.category === "дохід") return;
+        if (hint.confidence >= AUTO_CATEGORY_CONFIDENCE) {
+          setCategory(hint.category);
+          setAutoCategory(true);
+          setSuggested(null);
+        } else {
+          setSuggested(hint.category);
+        }
+      } catch {
+        // Підказка — дрібна зручність; без неї форма працює як раніше.
+      }
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [edit, kind, categoryTouched, note]);
+
+  const pickCategory = (value: TransactionCategory) => {
+    setCategory(value);
+    setCategoryTouched(true);
+    setAutoCategory(false);
+    setSuggested(null);
+  };
 
   // Чернетка лише заповнює поля — зберігає людина сама, перевіривши їх.
   const fillFromDescription = async () => {
@@ -93,6 +134,7 @@ export function AddScreen({
       setWhen(spentAt.getTime() > Date.now() ? new Date() : spentAt);
       setNote(draft.note ?? "");
       setTags(draft.tags);
+      setCategoryTouched(true);
       setFilled(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося розібрати опис");
@@ -247,7 +289,7 @@ export function AddScreen({
                 return (
                   <Pressable
                     key={item}
-                    onPress={() => setCategory(item)}
+                    onPress={() => pickCategory(item)}
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
                     accessibilityLabel={item}
@@ -263,6 +305,12 @@ export function AddScreen({
                 );
               })}
             </View>
+            {autoCategory && <Text style={styles.hint}>Категорію підставлено за схожими записами</Text>}
+            {suggested && suggested !== category && (
+              <Pressable onPress={() => pickCategory(suggested)} accessibilityRole="button">
+                <Text style={styles.suggestion}>Схоже на «{suggested}» — обрати</Text>
+              </Pressable>
+            )}
           </View>
         )}
 
@@ -377,6 +425,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   describeDisabled: { opacity: 0.5 },
+  suggestion: { color: theme.olive, fontSize: 13, fontWeight: "600" },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tile: {
     width: "23%",

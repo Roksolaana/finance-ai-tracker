@@ -16,7 +16,15 @@ from app.models import Transaction, User
 from app.llm import is_configured
 from app.parsing import parse
 from app.ratelimit import RateLimiter
-from app.schemas import ParseRequest, TransactionCreate, TransactionDraft, TransactionList, TransactionRead
+from app.categorize import suggest_category
+from app.schemas import (
+    CategorySuggestion,
+    ParseRequest,
+    TransactionCreate,
+    TransactionDraft,
+    TransactionList,
+    TransactionRead,
+)
 from app.embeddings import embed_one
 from app.timeutils import in_date_range, local_midnight
 
@@ -71,6 +79,23 @@ async def parse_transaction(
         _parse_requests.record(user.id)
     draft = await parse(payload.text, use_llm)
     return TransactionDraft(**draft.__dict__)
+
+
+# Оголошено до /{transaction_id}: інакше «suggest-category» читалось би як id.
+@router.get("/suggest-category", response_model=CategorySuggestion, summary="Підказати категорію за нотаткою")
+async def suggest_transaction_category(
+    note: str = Query(..., max_length=1000, description="Нотатка, для якої потрібна категорія"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> CategorySuggestion:
+    """kNN по ембедингах власних транзакцій, без мовної моделі."""
+    if not note.strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Порожня нотатка")
+    vector = await run_in_threadpool(embed_one, note)
+    if vector is None:
+        return CategorySuggestion(category=None, confidence=0.0)
+    category, confidence = await suggest_category(db, user.id, vector)
+    return CategorySuggestion(category=category, confidence=confidence)
 
 
 def _escape_like(value: str) -> str:

@@ -231,6 +231,15 @@ class TransactionDraft(BaseModel):
     source: Literal["llm", "rules"]
 
 
+class CategorySuggestion(BaseModel):
+    """Підказка категорії за схожими власними записами."""
+
+    # None — схожих записів замало, підказки немає.
+    category: str | None
+    # Частка голосів 5 найближчих сусідів за цю категорію (0…1).
+    confidence: float
+
+
 class TransactionList(BaseModel):
     """Обгортка для списку транзакцій з пагінацією."""
 

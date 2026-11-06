@@ -31,6 +31,20 @@ export interface TransactionDraft {
   source: "llm" | "rules";
 }
 
+/** Підказка категорії за схожими власними записами. */
+export interface CategorySuggestion {
+  category: TransactionCategory | null;
+  /** Частка 5 найближчих записів за цю категорію: 1 — усі згодні. */
+  confidence: number;
+}
+
+/**
+ * З якої впевненості форма підставляє категорію сама. Нижче — лише
+ * пропонує: на нових фразах слабша підказка частіше помиляється, ніж влучає
+ * (див. backend/eval/run_categories.py).
+ */
+export const AUTO_CATEGORY_CONFIDENCE = 1;
+
 interface ApiTransactionList {
   items: ApiTransaction[];
   total: number;
@@ -79,6 +93,13 @@ export function createTransactionsApi(baseUrl: string = API_URL) {
     },
     async remove(id: string): Promise<void> {
       await request<void>(`${root}/${id}`, { method: "DELETE" });
+    },
+    async suggestCategory(note: string): Promise<CategorySuggestion> {
+      const result = await request<{ category: string | null; confidence: number }>(
+        `${root}/suggest-category?note=${encodeURIComponent(note)}`,
+      );
+      const known = result.category !== null && (CATEGORIES as string[]).includes(result.category);
+      return { category: known ? (result.category as TransactionCategory) : null, confidence: result.confidence };
     },
     /** Розбирає «вчора таксі 230» у поля форми. Нічого не зберігає. */
     async parse(text: string): Promise<TransactionDraft> {
