@@ -14,7 +14,6 @@ import re
 import logging
 import time
 import uuid
-from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -25,6 +24,7 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.llm import LLMUnavailable, chat_completion, is_configured
 from app.models import ChatMessage, Transaction, User
+from app.ratelimit import RateLimiter, too_many_requests
 from app.schemas import ChatHistory, ChatRequest, ChatResponse
 from app.tools import HANDLERS, ToolArgumentError, ToolOutcome, system_prompt, tool_schemas
 
@@ -39,29 +39,17 @@ HISTORY_LIMIT = 10
 # з лімітом 30 запитів/хв. Живій розмові 20 питань за 10 хвилин (в середньому
 # одне на 30 с) вистачає з запасом, а скрипт чи «залиплий» клієнт не
 # вичерпає спільну квоту й пул зʼєднань для інших.
-#
-# Лічильник у памʼяті процесу: застосунок працює одним процесом uvicorn, тож
-# окремий Redis заради цього зайвий. Після перезапуску лічильники
-# обнуляються — для захисту від зловживань це не страшно.
 CHAT_RATE_LIMIT = 20
 CHAT_RATE_WINDOW = 600.0
-_recent_requests: dict[uuid.UUID, deque[float]] = defaultdict(deque)
+_recent_requests = RateLimiter(window=CHAT_RATE_WINDOW)
 
 
 def _check_rate_limit(user_id: uuid.UUID) -> None:
     """Кидає 429, якщо користувач вичерпав ліміт; інакше зараховує запит."""
-    now = time.monotonic()
-    requests = _recent_requests[user_id]
-    while requests and now - requests[0] >= CHAT_RATE_WINDOW:
-        requests.popleft()
-    if len(requests) >= CHAT_RATE_LIMIT:
-        retry_after = int(CHAT_RATE_WINDOW - (now - requests[0])) + 1
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Забагато запитів до асистента. Спробуйте за кілька хвилин",
-            headers={"Retry-After": str(retry_after)},
-        )
-    requests.append(now)
+    retry_after = _recent_requests.retry_after(user_id, CHAT_RATE_LIMIT)
+    if retry_after is not None:
+        raise too_many_requests("Забагато запитів до асистента. Спробуйте за кілька хвилин", retry_after)
+    _recent_requests.record(user_id)
 
 
 @router.get("/status", summary="Чи налаштований AI-чат")

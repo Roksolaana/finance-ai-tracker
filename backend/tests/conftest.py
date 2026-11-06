@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.database import get_db, settings
 from app.main import app
 from app.migrate import upgrade_to_head
+from app.routers import auth as auth_router
+from app.routers import chat as chat_router
 
 TEST_DB = "finance_test"
 MAIN_URL = make_url(settings.DATABASE_URL)
@@ -42,6 +44,27 @@ async def _recreate(drop_only: bool = False) -> None:
             await conn.execute(f'CREATE DATABASE "{TEST_DB}"')
     finally:
         await conn.close()
+
+
+def run_sql(*statements: str) -> list:
+    """Виконує SQL у тестовій базі повз ORM; повертає рядки останньої команди.
+
+    Для тестів міграцій: на проміжній ревізії схема не збігається з
+    моделями, тож писати в неї можна лише сирим SQL. Синхронна обгортка,
+    бо Alembic у тих самих тестах сам запускає власний event loop.
+    """
+
+    async def run() -> list:
+        conn = await asyncpg.connect(_raw_dsn(TEST_URL))
+        try:
+            result: list = []
+            for sql in statements:
+                result = await conn.fetch(sql)
+            return result
+        finally:
+            await conn.close()
+
+    return asyncio.run(run())
 
 
 @pytest.fixture(scope="session")
@@ -76,6 +99,16 @@ async def clean_tables(sessionmaker):
     async with sessionmaker() as session:
         await session.execute(text("TRUNCATE users, transactions, budgets, chat_messages CASCADE"))
         await session.commit()
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limits():
+    # Лічильники живуть у памʼяті процесу, а тести входять тими самими
+    # email з тієї самої адреси — без скидання помилки одного тесту
+    # блокували б вхід у наступному.
+    yield
+    auth_router._failed_logins.clear()
+    chat_router._recent_requests.clear()
 
 
 @pytest.fixture(autouse=True)

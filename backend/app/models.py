@@ -87,12 +87,12 @@ class Transaction(Base):
         default=uuid.uuid4,
         server_default=func.gen_random_uuid(),
     )
-    # Nullable через записи, створені до введення користувачів: їх забирає
-    # собі перший зареєстрований акаунт (див. міграцію 0003 і routers/auth.py).
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
+    # Обовʼязковий з міграції 0007: «нічиї» записи забирав перший акаунт,
+    # і на свіжій установці він отримував чужі дані.
+    user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=True,
+        nullable=False,
         comment="Власник транзакції",
     )
     amount: Mapped[float] = mapped_column(

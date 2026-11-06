@@ -1,14 +1,12 @@
 """Історія лімітів: зміна ліміту діє з поточного місяця, а не заднім числом."""
 
-import asyncio
 import datetime
 import uuid
 
-import asyncpg
 from alembic import command
-from sqlalchemy import make_url, select
+from conftest import run_sql
+from sqlalchemy import select
 
-from app.database import settings
 from app.migrate import alembic_config
 from app.models import BudgetHistory
 from app.tools import check_budgets
@@ -115,46 +113,28 @@ async def test_removed_limit_stays_in_past_months(client, db, alice, monkeypatch
     assert (await client.get(URL, headers=headers)).json() == []
 
 
-async def _run_sql(statements: list[str]) -> list:
-    dsn = make_url(settings.DATABASE_URL).set(drivername="postgresql").render_as_string(hide_password=False)
-    conn = await asyncpg.connect(dsn)
-    try:
-        result = []
-        for sql in statements:
-            result = await conn.fetch(sql)
-        return result
-    finally:
-        await conn.close()
-
-
 def test_migration_moves_existing_limits_into_history(test_database):
     """Наявні ліміти переносяться з valid_from = місяць останньої зміни."""
     config = alembic_config()
     command.downgrade(config, "0005")
     try:
         user_id = uuid.uuid4()
-        asyncio.run(
-            _run_sql(
-                [
-                    f"INSERT INTO users (id, email, password_hash, display_name) "
-                    f"VALUES ('{user_id}', 'migrate@example.com', 'x', 'm')",
-                    # 21 вересня за Києвом.
-                    f"INSERT INTO budgets (user_id, category, monthly_limit, updated_at) "
-                    f"VALUES ('{user_id}', 'кафе', 1000, '2026-09-20 22:30+00')",
-                    # 30 вересня 22:30 UTC — це вже 1 жовтня за Києвом.
-                    f"INSERT INTO budgets (user_id, category, monthly_limit, updated_at) "
-                    f"VALUES ('{user_id}', 'їжа', 5000, '2026-09-30 22:30+00')",
-                ]
-            )
+        run_sql(
+            f"INSERT INTO users (id, email, password_hash, display_name) "
+            f"VALUES ('{user_id}', 'migrate@example.com', 'x', 'm')",
+            # 21 вересня за Києвом.
+            f"INSERT INTO budgets (user_id, category, monthly_limit, updated_at) "
+            f"VALUES ('{user_id}', 'кафе', 1000, '2026-09-20 22:30+00')",
+            # 30 вересня 22:30 UTC — це вже 1 жовтня за Києвом.
+            f"INSERT INTO budgets (user_id, category, monthly_limit, updated_at) "
+            f"VALUES ('{user_id}', 'їжа', 5000, '2026-09-30 22:30+00')",
         )
         command.upgrade(config, "0006")
-        rows = asyncio.run(
-            _run_sql([f"SELECT category, monthly_limit, valid_from FROM budget_history WHERE user_id = '{user_id}'"])
-        )
+        rows = run_sql(f"SELECT category, monthly_limit, valid_from FROM budget_history WHERE user_id = '{user_id}'")
         assert sorted((r["category"], float(r["monthly_limit"]), r["valid_from"]) for r in rows) == [
             ("кафе", 1000, D(2026, 9, 1)),
             ("їжа", 5000, D(2026, 10, 1)),
         ]
     finally:
         command.upgrade(config, "head")
-        asyncio.run(_run_sql(["DELETE FROM users WHERE email = 'migrate@example.com'"]))
+        run_sql("DELETE FROM users WHERE email = 'migrate@example.com'")
