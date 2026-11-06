@@ -4,17 +4,19 @@
 чистий SQL не відповідає на запит про зміст, а чистий RAG — на числовий,
 тож гібридна маршрутизація не є надлишковою.
 
+Дані — стала фікстура eval/fixture.json в окремій базі, як і в інших
+скриптах оцінки: числа в README відтворюються без чиєїсь робочої бази.
+
 Запуск із теки backend:
     python -m eval.run_baselines
 """
 
 import asyncio
 
-from sqlalchemy import select
-
-from app.database import async_session
-from app.models import User
-from app.tools import query_transactions, semantic_search_notes, hybrid_search_and_sum
+from app.timeutils import frozen_today
+from app.tools import hybrid_search_and_sum, query_transactions, semantic_search_notes
+from eval.cases import TODAY
+from eval.evaldb import open_eval_db, prepare_database
 
 # (запит, що це за тип, аргументи для кожного шляху)
 PROBES = [
@@ -44,8 +46,8 @@ PROBES = [
 
 def summarise(kind: str, payload: dict) -> str:
     if kind == "sql":
-        if "total" in payload:
-            return f"сума {payload['total']:.0f} ₴ по {payload['count']} записах"
+        if "expenses" in payload:
+            return f"витрати {payload['expenses']:.0f} ₴ по {payload['count']} записах"
         if "transactions" in payload:
             return f"{len(payload['transactions'])} записів, без підсумку"
         return str(payload)
@@ -55,27 +57,32 @@ def summarise(kind: str, payload: dict) -> str:
 
 
 async def main() -> None:
-    async with async_session() as db:
-        user = (await db.execute(select(User))).scalars().first()
-        if user is None:
-            print("У базі немає акаунтів.")
-            return
+    engine, sessions, user_id = await open_eval_db()
+    try:
+        with frozen_today(TODAY):
+            async with sessions() as db:
+                await _probe_all(db, user_id)
+    finally:
+        await engine.dispose()
 
-        for probe in PROBES:
-            print()
-            print("=" * 72)
-            print(f"Запит: {probe['question']}")
-            print(f"Тип:   {probe['kind']}")
-            print()
 
-            sql_out = await query_transactions(db, user.id, **probe["sql"])
-            rag_out = await semantic_search_notes(db, user.id, **probe["rag"])
-            hyb_out = await hybrid_search_and_sum(db, user.id, **probe["hybrid"])
+async def _probe_all(db, user_id) -> None:
+    for probe in PROBES:
+        print()
+        print("=" * 72)
+        print(f"Запит: {probe['question']}")
+        print(f"Тип:   {probe['kind']}")
+        print()
 
-            print(f"  лише SQL     : {summarise('sql', sql_out.payload)}")
-            print(f"  лише RAG     : {summarise('rag', rag_out.payload)}")
-            print(f"  гібрид       : {summarise('hybrid', hyb_out.payload)}")
+        sql_out = await query_transactions(db, user_id, **probe["sql"])
+        rag_out = await semantic_search_notes(db, user_id, **probe["rag"])
+        hyb_out = await hybrid_search_and_sum(db, user_id, **probe["hybrid"])
+
+        print(f"  лише SQL     : {summarise('sql', sql_out.payload)}")
+        print(f"  лише RAG     : {summarise('rag', rag_out.payload)}")
+        print(f"  гібрид       : {summarise('hybrid', hyb_out.payload)}")
 
 
 if __name__ == "__main__":
+    prepare_database()
     asyncio.run(main())

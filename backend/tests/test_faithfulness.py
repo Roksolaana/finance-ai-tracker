@@ -40,6 +40,7 @@ def test_numbers_are_extracted_with_formatting(text, values):
         pytest.param("за 2026‑08‑01 – 2026‑08‑31", id="ISO з нерозривним дефісом"),
         pytest.param("Період: 12 жовтня — 18 жовтня 2026", id="день, місяць і рік"),
         pytest.param("проїзний (01.10) і автобус (08.10)", id="день і місяць без року"),
+        pytest.param("найбільші — 24 08 2026 і 03 07 2026", id="дата через пробіли"),
     ],
 )
 def test_dates_and_numbering_are_ignored(text):

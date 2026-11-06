@@ -172,23 +172,38 @@ def _percent(part: int, whole: int) -> str:
     return f"{part}/{whole} = {part / whole:.1%}" if whole else "—"
 
 
+COMPARISON_FIELDS = [
+    "модель", "кейсів", "строга точність", "мʼяка точність", "аргументи вірні", "faithfulness", "середній час вибору, с",
+]
+
+
 def write_comparison(model: str, answers: bool, summary) -> None:
-    """Оновлює рядок моделі в eval/models_comparison.csv (інші рядки лишаються)."""
-    fields = ["модель", "кейсів", "строга точність", "мʼяка точність", "аргументи вірні", "faithfulness", "середній час, с"]
+    """Оновлює рядок моделі в eval/models_comparison.csv (інші рядки лишаються).
+
+    Режими пишуть різні колонки й не перетирають одне одного. Точність,
+    аргументи й час — з прогону без --answers: там один виклик на кейс, і
+    час моделей порівнюваний. Faithfulness — з прогону з --answers. Так
+    повні відповіді можна рахувати лише для основної моделі й не витрачати
+    безкоштовну квоту на всі.
+    """
     rows: dict[str, dict] = {}
     if COMPARISON.exists():
         with COMPARISON.open(encoding="utf-8-sig") as handle:
             rows = {r["модель"]: r for r in csv.DictReader(handle, delimiter=";")}
     share = summary.share
-    rows[model] = {
-        "модель": model,
-        "кейсів": summary.total,
-        "строга точність": f"{share(summary.strict, summary.total):.3f}",
-        "мʼяка точність": f"{share(summary.soft, summary.total):.3f}",
-        "аргументи вірні": f"{share(summary.args_ok, summary.args_total):.3f}",
-        "faithfulness": f"{share(summary.faithful, summary.answers_total):.3f}" if answers else "",
-        "середній час, с": f"{summary.seconds:.2f}",
-    }
+    row = {field: "" for field in COMPARISON_FIELDS} | rows.get(model, {}) | {"модель": model}
+    if answers:
+        row["faithfulness"] = f"{share(summary.faithful, summary.answers_total):.3f}"
+    else:
+        row |= {
+            "кейсів": summary.total,
+            "строга точність": f"{share(summary.strict, summary.total):.3f}",
+            "мʼяка точність": f"{share(summary.soft, summary.total):.3f}",
+            "аргументи вірні": f"{share(summary.args_ok, summary.args_total):.3f}",
+            "середній час вибору, с": f"{summary.seconds:.2f}",
+        }
+    rows[model] = {field: row.get(field, "") for field in COMPARISON_FIELDS}
+    fields = COMPARISON_FIELDS
     with COMPARISON.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields, delimiter=";")
         writer.writeheader()
