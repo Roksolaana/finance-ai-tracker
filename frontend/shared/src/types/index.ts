@@ -10,12 +10,16 @@ export type TransactionCategory =
   | "дохід"
   | "інше";
 
+/** Теги настрою — фіксований набір, як і категорії (див. MOOD_TAGS). */
+export type MoodTag = "стрес" | "втома" | "свято" | "імпульс" | "з друзями" | "необхідне";
+
 export interface Transaction {
   id: string;
   amount: number;
   category: TransactionCategory;
   spent_at: string;
   note: string | null;
+  tags: MoodTag[];
   created_at: string;
 }
 

@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { EXPENSE_CATEGORIES, dayKey, type Transaction, type TransactionCategory } from "@finance/shared";
+import { EXPENSE_CATEGORIES, MOOD_TAGS, dayKey, type MoodTag, type Transaction, type TransactionCategory } from "@finance/shared";
 import { transactionsApi } from "@/api";
 import { categoryColor, categoryIcon, dayTitle } from "@/format";
 import { useNav, useScreen } from "@/navigation/context";
@@ -66,6 +66,9 @@ export function AddScreen({
     edit && edit.category !== "дохід" ? edit.category : "їжа",
   );
   const [note, setNote] = useState(edit?.note ?? "");
+  const [tags, setTags] = useState<MoodTag[]>(edit?.tags ?? []);
+  const toggleTag = (tag: MoodTag) =>
+    setTags((current) => (current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag]));
   // Зберігаємо саму дату й окремо час: при зміні дня час лишається тим самим.
   const [when, setWhen] = useState(() => (edit ? new Date(edit.spent_at) : new Date()));
   const [error, setError] = useState<string | null>(null);
@@ -106,6 +109,7 @@ export function AddScreen({
       amount: kind === "income" ? parsed : -parsed,
       category: kind === "income" ? ("дохід" as const) : category,
       note: note.trim() || null,
+      tags,
       spent_at: when.toISOString(),
     };
     try {
@@ -237,6 +241,15 @@ export function AddScreen({
           <Text style={styles.hint}>Асистент шукає й за змістом нотаток — пишіть своїми словами</Text>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.label}>Настрій</Text>
+          <View style={styles.tags}>
+            {MOOD_TAGS.map((tag) => (
+              <DayChip key={tag} label={tag} selected={tags.includes(tag)} onPress={() => toggleTag(tag)} />
+            ))}
+          </View>
+        </View>
+
         {error && (
           <Text style={ui.error} accessibilityRole="alert">
             {error}
@@ -287,6 +300,7 @@ const styles = StyleSheet.create({
   currency: { fontSize: 26, color: theme.inkSoft },
   section: { gap: 8 },
   label: { fontSize: 14, color: theme.ink, fontWeight: "600" },
+  tags: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tile: {
     width: "23%",

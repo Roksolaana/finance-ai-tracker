@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { EXPENSE_CATEGORIES, dayKey, monthKey, type TransactionCategory } from "@finance/shared";
+import { EXPENSE_CATEGORIES, MOOD_TAGS, dayKey, monthKey, type MoodTag, type TransactionCategory } from "@finance/shared";
 import { useTransactions } from "../context/TransactionsContext";
 import { useUi } from "../context/UiContext";
 import { CategoryIcon } from "./CategoryIcon";
@@ -24,6 +24,7 @@ export function TransactionFormDialog() {
   const [category, setCategory] = useState<TransactionCategory>("їжа");
   const [date, setDate] = useState(dayKey(new Date()));
   const [note, setNote] = useState("");
+  const [tags, setTags] = useState<MoodTag[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -36,14 +37,19 @@ export function TransactionFormDialog() {
       setCategory(editing.amount > 0 ? "їжа" : editing.category);
       setDate(dayKey(editing.spent_at));
       setNote(editing.note ?? "");
+      setTags(editing.tags);
     } else {
       setKind("expense");
       setAmount("");
       setCategory("їжа");
       setDate(dayKey(new Date()));
       setNote("");
+      setTags([]);
     }
   }, [form, editing]);
+
+  const toggleTag = (tag: MoodTag) =>
+    setTags((current) => (current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag]));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,6 +76,7 @@ export function TransactionFormDialog() {
       amount: kind === "income" ? parsed : -parsed,
       category: kind === "income" ? ("дохід" as const) : category,
       note: note.trim() || null,
+      tags,
       spent_at: combineDateWithTime(date, editing ? new Date(editing.spent_at) : new Date()),
     };
 
@@ -211,6 +218,27 @@ export function TransactionFormDialog() {
                 Пишіть нотатку своїми словами — AI-асистент шукатиме витрати за змістом.
               </p>
             )}
+
+            <div>
+              <span className="label" id="tags-label">Настрій</span>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby="tags-label">
+                {MOOD_TAGS.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    aria-pressed={tags.includes(tag)}
+                    onClick={() => toggleTag(tag)}
+                    className={`chip border transition-colors ${
+                      tags.includes(tag)
+                        ? "border-olive bg-olive-tint text-ink"
+                        : "border-line text-ink-soft hover:border-olive-soft"
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {error && <p className="rounded-xl bg-negative-tint px-3 py-2 text-sm text-negative">{error}</p>}
 

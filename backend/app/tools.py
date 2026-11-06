@@ -84,6 +84,8 @@ def _describe(transaction: Transaction) -> dict[str, Any]:
         # учорашнім числом і суперечила статистиці.
         "date": transaction.spent_at.astimezone(TZ).date().isoformat(),
         "note": transaction.note,
+        # Теги — те, що користувач сам сказав про настрій; модель може на них спертись.
+        **({"tags": list(transaction.tags)} if transaction.tags else {}),
     }
 
 

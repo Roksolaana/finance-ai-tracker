@@ -1,6 +1,6 @@
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { CalendarDays, Pencil, StickyNote, Tag, Trash2, X } from "lucide-react";
+import { CalendarDays, Pencil, Smile, StickyNote, Tag, Trash2, X } from "lucide-react";
 import { filterByMonth, monthKey } from "@finance/shared";
 import { useTransactions } from "../context/TransactionsContext";
 import { useUi } from "../context/UiContext";
@@ -90,6 +90,19 @@ export function TransactionDetailsSheet() {
                       {transaction.note || <span className="text-muted">—</span>}
                     </dd>
                   </div>
+                  {transaction.tags.length > 0 && (
+                    <div className="flex items-start gap-3 py-3.5">
+                      <Smile size={16} className="mt-0.5 text-muted" />
+                      <dt className="text-sm text-muted">Настрій</dt>
+                      <dd className="ml-auto flex max-w-60 flex-wrap justify-end gap-1">
+                        {transaction.tags.map((tag) => (
+                          <span key={tag} className="chip bg-olive-tint text-ink">
+                            {tag}
+                          </span>
+                        ))}
+                      </dd>
+                    </div>
+                  )}
                 </dl>
 
                 {transaction.amount < 0 && (

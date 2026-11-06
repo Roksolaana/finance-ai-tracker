@@ -42,6 +42,7 @@ async def create_transaction(
         category=payload.category,
         spent_at=payload.spent_at or datetime.now(timezone.utc),
         note=payload.note,
+        tags=payload.tags,
         embedding=await run_in_threadpool(embed_one, payload.note),
     )
     db.add(transaction)
@@ -164,6 +165,7 @@ async def update_transaction(
     if payload.note != transaction.note:
         transaction.embedding = await run_in_threadpool(embed_one, payload.note)
     transaction.note = payload.note
+    transaction.tags = payload.tags
     if payload.spent_at is not None:
         transaction.spent_at = payload.spent_at
     await db.commit()

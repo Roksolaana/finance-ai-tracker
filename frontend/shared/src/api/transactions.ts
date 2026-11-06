@@ -1,5 +1,5 @@
-import { API_URL, CATEGORIES } from "../constants";
-import type { Transaction, TransactionCategory } from "../types";
+import { API_URL, CATEGORIES, MOOD_TAGS } from "../constants";
+import type { MoodTag, Transaction, TransactionCategory } from "../types";
 import { request } from "./client";
 
 export interface TransactionInput {
@@ -7,6 +7,7 @@ export interface TransactionInput {
   category: TransactionCategory;
   note: string | null;
   spent_at: string;
+  tags?: MoodTag[];
 }
 
 interface ApiTransaction {
@@ -15,6 +16,7 @@ interface ApiTransaction {
   category: string;
   spent_at: string;
   note: string | null;
+  tags?: string[];
   created_at: string;
 }
 
@@ -27,7 +29,9 @@ const PAGE_SIZE = 1000;
 
 function toTransaction(e: ApiTransaction): Transaction {
   const category = (CATEGORIES as string[]).includes(e.category) ? (e.category as TransactionCategory) : "інше";
-  return { ...e, amount: Number(e.amount), category };
+  // Старий сервер тегів не віддає, а невідомий тег інтерфейсу нема як показати.
+  const tags = (e.tags ?? []).filter((t): t is MoodTag => (MOOD_TAGS as string[]).includes(t));
+  return { ...e, amount: Number(e.amount), category, tags };
 }
 
 export function createTransactionsApi(baseUrl: string = API_URL) {

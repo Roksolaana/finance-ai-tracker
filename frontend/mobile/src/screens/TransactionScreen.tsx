@@ -45,6 +45,7 @@ export function TransactionScreen({ transaction: initial }: { transaction: Trans
                 amount: transaction.amount,
                 category: transaction.category,
                 note: transaction.note,
+                tags: transaction.tags,
                 spent_at: transaction.spent_at,
               });
               refresh();
@@ -74,6 +75,7 @@ export function TransactionScreen({ transaction: initial }: { transaction: Trans
         <Card style={styles.fields}>
           <Field label="Категорія" value={capitalize(transaction.category)} />
           <Field label="Тип" value={income ? "Дохід" : "Витрата"} />
+          {transaction.tags.length > 0 && <Field label="Настрій" value={transaction.tags.join(", ")} />}
           <Field
             label="Дата"
             value={spentAt.toLocaleDateString("uk-UA", { day: "numeric", month: "long", year: "numeric" })}

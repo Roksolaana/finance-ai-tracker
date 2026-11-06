@@ -12,9 +12,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import case, func, select
+from sqlalchemy import Text, and_, case, cast, func, or_, select
+from sqlalchemy.dialects.postgresql import ARRAY, array
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import TAG_STEMS
 from app.embeddings import (
     KEYWORD_BONUS,
     RELEVANCE_THRESHOLD,
@@ -84,6 +86,14 @@ def _keyword_share(alternatives: list[list[str]]):
     return shares[0] if len(shares) == 1 else func.greatest(*shares)
 
 
+def query_tags(query_text: str) -> list[str]:
+    """Теги настрою, які запит називає прямо: «коли я була втомлена» -> «втома»."""
+    words = re.findall(r"[а-яіїєґʼ'a-z]+", query_text.lower())
+    return [
+        tag for tag, stems in TAG_STEMS.items() if any(word.startswith(stem) for word in words for stem in stems)
+    ]
+
+
 def date_bounds(date_from: datetime.date | None, date_to: datetime.date | None) -> list:
     """Умови на spent_at за місцевою добою, обидві межі включно."""
     conditions = []
@@ -144,16 +154,27 @@ def _relevance(
     else:
         passes = score >= RELEVANCE_THRESHOLD
 
+    # Тег, який запит називає прямо, — явна позначка користувача, а не
+    # здогад моделі ембедингів, тож такий запис проходить без порога. Так
+    # знаходиться й запис без нотатки, у якого вектора немає взагалі. У сам
+    # вектор теги не входять: інакше змінився б розподіл схожості, і пороги
+    # вище, підібрані на нотатках, перестали б бути чинними.
+    tags = query_tags(query_text) if use_keywords else []
+    matched = and_(Transaction.embedding.is_not(None), passes)
+    tagged = Transaction.tags.overlap(cast(array(tags), ARRAY(Text))) if tags else None
+
     conditions = [
         Transaction.user_id == user_id,
-        Transaction.embedding.is_not(None),
-        passes,
+        or_(matched, tagged) if tagged is not None else matched,
         # Доходи й записи поза періодом відсіюємо ще до ліміту: інакше
         # вони займали б місця в top_k і могли б витіснити справжні збіги.
         *([Transaction.amount < 0] if expenses_only else []),
         *date_bounds(date_from, date_to),
     ]
-    return distance, score, conditions
+    # Записи з названим тегом — першими; у запису без вектора оцінки немає,
+    # і без nulls_last він стояв би нагорі лише через NULL.
+    ordering = [*([tagged.desc()] if tagged is not None else []), score.desc().nulls_last()]
+    return distance, score, conditions, ordering
 
 
 async def semantic_search(
@@ -181,20 +202,25 @@ async def semantic_search(
     if vector is None:
         return []
 
-    distance, score, conditions = _relevance(
+    distance, score, conditions, ordering = _relevance(
         user_id, query_text, vector, threshold, expenses_only, date_from, date_to, use_keywords
     )
     rows = (
         await db.execute(
             select(Transaction, distance.label("distance"), score.label("score"))
             .where(*conditions)
-            .order_by(score.desc())
+            .order_by(*ordering)
             .limit(top_k)
         )
     ).all()
 
+    # Запис, знайдений лише за тегом, не має вектора, а отже й схожості.
     return [
-        SearchHit(transaction=row[0], similarity=1 - row[1], score=float(row[2]))
+        SearchHit(
+            transaction=row[0],
+            similarity=1 - row[1] if row[1] is not None else 0.0,
+            score=float(row[2]) if row[2] is not None else None,
+        )
         for row in rows
     ]
 
@@ -220,7 +246,7 @@ async def semantic_total(
     if vector is None:
         return Decimal(0), 0
 
-    _, _, conditions = _relevance(user_id, query_text, vector, threshold, expenses_only, date_from, date_to)
+    _, _, conditions, _ = _relevance(user_id, query_text, vector, threshold, expenses_only, date_from, date_to)
     row = (
         await db.execute(
             select(

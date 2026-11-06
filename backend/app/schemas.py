@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from app.constants import CATEGORIES, EXPENSE_CATEGORIES, INCOME_CATEGORY, MIN_YEAR
+from app.constants import CATEGORIES, EXPENSE_CATEGORIES, INCOME_CATEGORY, MIN_YEAR, MOOD_TAGS
 
 # Допуск, щоб трохи спішний годинник клієнта не ламав запис «щойно».
 CLOCK_SKEW = datetime.timedelta(minutes=5)
@@ -117,6 +117,20 @@ class TransactionCreate(BaseModel):
         description="Коментар до транзакції",
         examples=["Обід у кафе з друзями"],
     )
+    tags: list[str] = Field(
+        default_factory=list,
+        description=f"Теги настрою. Доступні: {', '.join(MOOD_TAGS)}",
+        examples=[["стрес", "втома"]],
+    )
+
+    @field_validator("tags")
+    @classmethod
+    def check_tags(cls, value: list[str]) -> list[str]:
+        unknown = [tag for tag in value if tag not in MOOD_TAGS]
+        if unknown:
+            raise ValueError(f"Невідомий тег «{unknown[0]}». Доступні: {', '.join(MOOD_TAGS)}")
+        # Повтори прибираємо, а порядок вибору лишаємо — так їх і показуємо.
+        return list(dict.fromkeys(value))
 
     @field_validator("amount")
     @classmethod
@@ -184,6 +198,9 @@ class TransactionRead(BaseModel):
     category: str
     spent_at: datetime.datetime
     note: str | None
+    # Рядки, а не MOOD_TAGS: збережений запис не має ламати читання, навіть
+    # якщо набір тегів колись зміниться.
+    tags: list[str] = Field(default_factory=list)
     created_at: datetime.datetime
 
 

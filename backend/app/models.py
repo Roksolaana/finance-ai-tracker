@@ -5,7 +5,7 @@ import uuid
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -125,6 +125,13 @@ class Transaction(Base):
         Text,
         nullable=True,
         comment="Довільний коментар користувача",
+    )
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text),
+        nullable=False,
+        default=list,
+        server_default="{}",
+        comment="Теги настрою з фіксованого набору: стрес, втома, свято, …",
     )
     embedding: Mapped[list[float] | None] = mapped_column(
         Vector(384),

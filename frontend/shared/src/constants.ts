@@ -1,4 +1,4 @@
-import type { TransactionCategory } from "./types";
+import type { MoodTag, TransactionCategory } from "./types";
 
 export const API_URL = "http://localhost:8000/api/v1";
 
@@ -16,6 +16,12 @@ export const CATEGORIES: TransactionCategory[] = [
 ];
 
 export const EXPENSE_CATEGORIES: TransactionCategory[] = CATEGORIES.filter((c) => c !== "дохід");
+
+/**
+ * Теги настрою. Дублює MOOD_TAGS у backend/app/constants.py — при зміні
+ * правити обидва, інакше сервер відхилить новий тег.
+ */
+export const MOOD_TAGS: MoodTag[] = ["стрес", "втома", "свято", "імпульс", "з друзями", "необхідне"];
 
 export const CATEGORY_COLORS: Record<TransactionCategory, string> = {
   "їжа": "#6B7F2E",

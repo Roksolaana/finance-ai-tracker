@@ -178,8 +178,8 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
         invalidateStats();
         return removed;
       },
-      restoreTransaction: async ({ amount, category, note, spent_at }) => {
-        const created = await trackMutation(() => api.create({ amount, category, note, spent_at }));
+      restoreTransaction: async ({ amount, category, note, tags, spent_at }) => {
+        const created = await trackMutation(() => api.create({ amount, category, note, tags, spent_at }));
         setTransactions((prev) => [created, ...prev.filter((t) => t.id !== created.id)]);
         invalidateStats();
       },
