@@ -36,28 +36,30 @@ def _raw_dsn(url) -> str:
     return url.set(drivername="postgresql").render_as_string(hide_password=False)
 
 
-def eval_url():
-    return make_url(settings.DATABASE_URL).set(database=EVAL_DB)
+def eval_url(name: str = EVAL_DB):
+    return make_url(settings.DATABASE_URL).set(database=name)
 
 
-def prepare_database() -> None:
-    """Перестворює finance_eval і доводить схему до останньої міграції.
+def prepare_database(name: str = EVAL_DB) -> None:
+    """Перестворює базу оцінки й доводить схему до останньої міграції.
 
     Синхронна: Alembic сам запускає event loop, тож викликати до asyncio.run.
+    Назву можна змінити, щоб паралельні прогони різних моделей не
+    перестворювали базу одне одному посеред роботи.
     """
     main_url = make_url(settings.DATABASE_URL)
 
     async def recreate() -> None:
         conn = await asyncpg.connect(_raw_dsn(main_url))
         try:
-            await conn.execute(f'DROP DATABASE IF EXISTS "{EVAL_DB}" WITH (FORCE)')
-            await conn.execute(f'CREATE DATABASE "{EVAL_DB}"')
+            await conn.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+            await conn.execute(f'CREATE DATABASE "{name}"')
         finally:
             await conn.close()
 
     asyncio.run(recreate())
     real_url = settings.DATABASE_URL
-    settings.DATABASE_URL = eval_url().render_as_string(hide_password=False)
+    settings.DATABASE_URL = eval_url(name).render_as_string(hide_password=False)
     try:
         upgrade_to_head()
     finally:
@@ -104,9 +106,9 @@ async def fill(
     return user.id
 
 
-async def open_eval_db() -> tuple[AsyncEngine, async_sessionmaker, uuid.UUID]:
+async def open_eval_db(name: str = EVAL_DB) -> tuple[AsyncEngine, async_sessionmaker, uuid.UUID]:
     """Двигун і сесії до вже підготовленої бази, заповненої фікстурою."""
-    engine = create_async_engine(eval_url(), poolclass=pool.NullPool)
+    engine = create_async_engine(eval_url(name), poolclass=pool.NullPool)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     async with sessions() as session:
         user_id = await fill(session, load_fixture())

@@ -36,6 +36,10 @@ def test_numbers_are_extracted_with_formatting(text, values):
         pytest.param("У 2026 році й у вересні 2026", id="рік"),
         pytest.param("Оплата о 21:30", id="час"),
         pytest.param("1. Кава\n2) Таксі", id="нумерація рядків"),
+        # Так моделі пишуть дати насправді: нерозривний дефіс U+2011.
+        pytest.param("за 2026‑08‑01 – 2026‑08‑31", id="ISO з нерозривним дефісом"),
+        pytest.param("Період: 12 жовтня — 18 жовтня 2026", id="день, місяць і рік"),
+        pytest.param("проїзний (01.10) і автобус (08.10)", id="день і місяць без року"),
     ],
 )
 def test_dates_and_numbering_are_ignored(text):
@@ -53,6 +57,8 @@ def test_invented_number_is_reported():
 def test_rounding_to_whole_hryvnias_is_allowed():
     payload = {"average_per_day": 41.13, "total": 1234.56}
     assert unsupported("Середнє 41 ₴ на день, разом 1 235 ₴.", [payload]) == []
+    # Відкинуті копійки — теж не вигадка: 36.67 -> «36 ₴».
+    assert unsupported("Середньо 36 ₴ за день.", [{"average_per_day": 36.67}]) == []
     # Але не «округлення» до зручного числа.
     assert unsupported("Разом приблизно 1 240 ₴.", [payload]) == ["1 240"]
 

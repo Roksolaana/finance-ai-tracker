@@ -16,9 +16,11 @@
 інструмента). З --answers — повний шлях, як у чаті: вибір, виконання
 інструментів на сталій фікстурі в окремій базі finance_eval, відповідь.
 
-Безкоштовний тариф Groq обмежує і запити за хвилину, і токени за добу.
-Готові кейси зберігаються в eval/runs/<модель>-<режим>.jsonl, тож прогін,
-перерваний лімітом, продовжується тією самою командою з місця зупинки.
+Безкоштовний тариф Groq обмежує токени за хвилину й запити за добу,
+окремо для кожної моделі. Готові кейси зберігаються в
+eval/runs/<модель>-<режим>.jsonl, тож прогін, перерваний лімітом,
+продовжується тією самою командою з місця зупинки. Кожна модель працює зі
+своєю базою, тож кілька моделей можна проганяти одночасно.
 
 Запуск із теки backend:
     python -m eval.run_routing
@@ -30,6 +32,7 @@ import argparse
 import asyncio
 import csv
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -50,6 +53,12 @@ COMPARISON = EVAL_DIR / "models_comparison.csv"
 # Пауза між кейсами: без неї безкоштовний ліміт запитів за хвилину
 # вичерпується десь на половині набору.
 PACE_SECONDS = 2.5
+# Безкоштовний тариф дає 8000 токенів на хвилину, а кейс з повною
+# відповіддю — це 6–7 тисяч. Тож після 429 чекаємо, поки хвилинне вікно
+# звільниться, і повторюємо той самий кейс. Кілька відмов поспіль — уже не
+# хвилинний, а добовий ліміт: тоді зупиняємось і зберігаємо зроблене.
+LIMIT_WAIT_SECONDS = 65
+LIMIT_RETRIES = 4
 
 
 class RateLimited(RuntimeError):
@@ -147,6 +156,11 @@ def csv_row(index: int, item: EvalCase, raw: dict, scored: dict) -> dict:
     }
 
 
+def database_for(model: str) -> str:
+    """Своя база для кожної моделі, щоб паралельні прогони не заважали."""
+    return "finance_eval_" + re.sub(r"[^a-z0-9]+", "_", model.lower()).strip("_")
+
+
 def _load(path: Path) -> dict[str, dict]:
     if not path.exists():
         return {}
@@ -205,7 +219,7 @@ async def main() -> int:
     if args.answers:
         from eval.evaldb import open_eval_db
 
-        engine, sessions, user_id = await open_eval_db()
+        engine, sessions, user_id = await open_eval_db(database_for(args.model))
 
     stopped = None
     try:
@@ -215,13 +229,22 @@ async def main() -> int:
                     continue
                 if index > 1:
                     await asyncio.sleep(PACE_SECONDS)
-                try:
-                    raw = await run_case(item, args.model, sessions, user_id)
-                except RateLimited as exc:
-                    stopped = str(exc)
+                raw = None
+                for attempt in range(LIMIT_RETRIES + 1):
+                    try:
+                        raw = await run_case(item, args.model, sessions, user_id)
+                        break
+                    except RateLimited as exc:
+                        if attempt == LIMIT_RETRIES:
+                            stopped = str(exc)
+                        else:
+                            print(f"  … ліміт провайдера, чекаю {LIMIT_WAIT_SECONDS} с")
+                            await asyncio.sleep(LIMIT_WAIT_SECONDS)
+                    except LLMUnavailable as exc:
+                        raw = {"error": str(exc)}
+                        break
+                if raw is None:
                     break
-                except LLMUnavailable as exc:
-                    raw = {"error": str(exc)}
                 raw["question"] = item.question
                 done[item.question] = raw
                 with cache_path.open("a", encoding="utf-8") as handle:
@@ -239,6 +262,12 @@ async def main() -> int:
         print(f"Готово {len(done)}/{len(CASES)}. Запустіть ту саму команду пізніше — прогін продовжиться.")
         return 2
 
+    # Кеш дописується по рядку; якщо кейс прогнано двічі (перерваний запуск),
+    # лишаємо останній результат, щоб файл відповідав таблиці.
+    cache_path.write_text(
+        "".join(json.dumps(done[item.question], ensure_ascii=False, default=str) + "\n" for item in CASES),
+        encoding="utf-8",
+    )
     rows = [(index, item, done[item.question]) for index, item in enumerate(CASES, 1)]
     scored_rows = [score(item, raw) for _, item, raw in rows]
     summary = summarise(scored_rows)
@@ -286,5 +315,6 @@ if __name__ == "__main__":
     if "--answers" in sys.argv:
         from eval.evaldb import prepare_database
 
-        prepare_database()
+        model = sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv else settings.LLM_MODEL
+        prepare_database(database_for(model))
     sys.exit(asyncio.run(main()))
