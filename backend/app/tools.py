@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import CATEGORIES, DATE_RANGE_ERROR
 from app.models import Budget, Transaction
-from app.search import date_bounds, semantic_search
+from app.search import date_bounds, embed_query, semantic_search, semantic_total
 from app.timeutils import TZ, in_date_range, local_midnight, local_today, next_month, period_end, previous_period
 
 ToolKind = Literal["sql", "rag", "hybrid"]
@@ -253,12 +253,26 @@ async def _previous_period(
 
 
 async def semantic_search_notes(
-    db: AsyncSession, user_id: uuid.UUID, query_text: str, top_k: int | None = 20
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    query_text: str,
+    top_k: int | None = 20,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> ToolOutcome:
     """Пошук за змістом нотатки."""
     # Модель інколи надсилає 0 або відʼємне значення, а SQL LIMIT такого не приймає.
     limit = min(max(top_k or 20, 1), 100)
-    hits = await semantic_search(db, user_id, query_text, top_k=limit)
+    # Без періоду «що я купувала, коли нервувала в жовтні» повертало записи
+    # за весь час, і модель сама вибирала з них жовтневі — або не вибирала.
+    hits = await semantic_search(
+        db,
+        user_id,
+        query_text,
+        top_k=limit,
+        date_from=_optional_date(date_from),
+        date_to=_optional_date(date_to),
+    )
     return ToolOutcome(
         "rag",
         {
@@ -277,62 +291,44 @@ async def hybrid_search_and_sum(
     date_to: str | None = None,
 ) -> ToolOutcome:
     """RAG знаходить записи за змістом, SQL рахує суму витрат серед них."""
-    # Період передаємо в сам пошук: ліміт top_k має застосовуватись уже до
-    # записів потрібного місяця, а не до всіх, з яких потім лишиться частина.
-    hits = await semantic_search(
-        db,
-        user_id,
-        query_text,
-        top_k=200,
-        expenses_only=True,
-        date_from=_optional_date(date_from),
-        date_to=_optional_date(date_to),
-    )
-    if not hits:
-        return ToolOutcome("hybrid", {"found": 0, "total": 0.0}, [])
-
-    ids = [h.transaction.id for h in hits]
-    conditions = [
-        Transaction.user_id == user_id,
-        Transaction.id.in_(ids),
-        # Лише витрати: інструмент відповідає на «скільки пішло на…». Без цього
-        # на «витрати через стрес цього місяця» пошук чіпляв «Стипендія за
-        # місяць», і дохід складався з витратами в одну суму.
-        Transaction.amount < 0,
-        *_date_bounds(date_from, date_to),
-    ]
+    # Сума й перелік — два запити з однаковими умовами: підсумок іде по всіх
+    # записах вище порога, а перелік обмежений, бо показати сотні нотаток
+    # моделі й користувачу немає сенсу. Період входить в умови пошуку, тож
+    # ліміт застосовується вже до записів потрібного місяця.
+    #
+    # Лише витрати: інструмент відповідає на «скільки пішло на…». Без цього
+    # на «витрати через стрес цього місяця» пошук чіпляв «Стипендія за
+    # місяць», і дохід складався з витратами в одну суму.
+    search = {
+        "expenses_only": True,
+        "date_from": _optional_date(date_from),
+        "date_to": _optional_date(date_to),
+        "vector": await embed_query(query_text),
+    }
     # Суму рахує база, а не модель — у цьому сенс гібридного інструмента.
-    row = (
-        await db.execute(
-            select(
-                func.coalesce(func.sum(func.abs(Transaction.amount)), 0),
-                func.count(Transaction.id),
-            ).where(*conditions)
-        )
-    ).one()
+    total, count = await semantic_total(db, user_id, query_text, **search)
+    if not count:
+        return ToolOutcome("hybrid", {"total": 0.0, "count": 0, "shown": 0}, [])
 
-    # Перелік фільтруємо тим самим періодом, що й суму: інакше під підсумком
-    # за вересень показувались би записи з усіх місяців.
-    kept = set(
-        (
-            await db.execute(select(Transaction.id).where(*conditions))
-        ).scalars().all()
-    )
-    matched = [h.transaction for h in hits if h.transaction.id in kept]
-    return ToolOutcome(
-        "hybrid",
-        {
-            "total": float(row[0]),
-            "count": int(row[1]),
-            "matched_notes": sorted({t.note for t in matched if t.note}),
-            # Кілька найбільших — щоб у відповіді були приклади, а не лише сума.
-            "largest": [
-                _describe(t)
-                for t in sorted(matched, key=lambda t: abs(float(t.amount)), reverse=True)[:5]
-            ],
-        },
-        matched,
-    )
+    hits = await semantic_search(db, user_id, query_text, top_k=LIST_LIMIT, **search)
+    matched = [h.transaction for h in hits]
+    payload: dict[str, Any] = {
+        "total": float(total),
+        "count": count,
+        "shown": len(matched),
+        "matched_notes": sorted({t.note for t in matched if t.note}),
+        # Кілька найбільших — щоб у відповіді були приклади, а не лише сума.
+        "largest": [
+            _describe(t)
+            for t in sorted(matched, key=lambda t: abs(float(t.amount)), reverse=True)[:5]
+        ],
+    }
+    if len(matched) < count:
+        # Без позначки модель сприймала перелік як повний і писала «знайдено
+        # 50 записів» поруч із сумою по 250.
+        payload["truncated"] = True
+        payload["note"] = f"показано {len(matched)} з {count} записів; сума й кількість — по всіх"
+    return ToolOutcome("hybrid", payload, matched)
 
 
 async def check_budgets(db: AsyncSession, user_id: uuid.UUID, month: str | None = None) -> ToolOutcome:
@@ -469,6 +465,7 @@ def tool_schemas() -> list[dict[str, Any]]:
                             ),
                         },
                         "top_k": {"type": ["integer", "null"]},
+                        **period,
                     },
                     "required": ["query_text"],
                 },

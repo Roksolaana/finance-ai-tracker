@@ -1,6 +1,7 @@
 """Гібридний інструмент, ліміти для асистента й поведінка старту при проблемах з базою."""
 
 import datetime
+import math
 import uuid
 
 import pytest
@@ -11,25 +12,31 @@ from app import main
 from app.database import settings
 from app.migrate import DatabaseUnavailable, upgrade_to_head
 from app.models import Base, Budget, Transaction
-from app.search import SearchHit
 from app.tools import ToolArgumentError, check_budgets, hybrid_search_and_sum
 
 OCTOBER = datetime.datetime(2026, 10, 10, 12, tzinfo=datetime.timezone.utc)
 
 
+def vector(similarity: float) -> list[float]:
+    """Вектор із заданою косинусною схожістю до vector(1.0)."""
+    return [similarity, math.sqrt(1 - similarity**2)] + [0.0] * 382
+
+
 async def test_hybrid_counts_only_expenses(db, monkeypatch, alice):
     _, user_id = alice
     owner = uuid.UUID(user_id)
-    stress = Transaction(user_id=owner, amount=-390, category="покупки", spent_at=OCTOBER, note="Косметика, щоб зняти стрес")
-    grant = Transaction(user_id=owner, amount=2918, category="дохід", spent_at=OCTOBER, note="Стипендія за місяць")
+    # Схожість задано векторами: саме такий збіг пошук давав на реальних
+    # даних — дохід «Стипендія за місяць» проходив поріг поруч зі стресом.
+    stress = Transaction(
+        user_id=owner, amount=-390, category="покупки", spent_at=OCTOBER, note="Косметика, щоб зняти стрес", embedding=vector(0.6)
+    )
+    grant = Transaction(
+        user_id=owner, amount=2918, category="дохід", spent_at=OCTOBER, note="Стипендія за місяць", embedding=vector(0.55)
+    )
     db.add_all([stress, grant])
     await db.commit()
 
-    # Векторний пошук підмінено: саме такий збіг він давав на реальних даних.
-    async def fake_search(db, user_id, query_text, top_k=50, threshold=None, expenses_only=False, **period):
-        return [SearchHit(stress, 0.6), SearchHit(grant, 0.5)]
-
-    monkeypatch.setattr("app.tools.semantic_search", fake_search)
+    monkeypatch.setattr("app.search.embed_one", lambda text: vector(1.0))
 
     outcome = await hybrid_search_and_sum(db, owner, "витрати через стрес цього місяця", "2026-10-01", "2026-10-31")
 

@@ -9,6 +9,7 @@ import datetime
 import re
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import case, func, select
@@ -93,30 +94,27 @@ def date_bounds(date_from: datetime.date | None, date_to: datetime.date | None) 
     return conditions
 
 
-async def semantic_search(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-    query_text: str,
-    # Навмисно щедро: однакова нотатка повторюється в різних транзакціях
-    # («Лате в «Львівській майстерні кави»» — 5 разів), і при малому top_k
-    # копії витіснили б інші релевантні нотатки. Відсікає поріг, а не ліміт.
-    top_k: int = 50,
-    threshold: float | None = None,
-    expenses_only: bool = False,
-    date_from: datetime.date | None = None,
-    date_to: datetime.date | None = None,
-) -> list[SearchHit]:
-    """Повертає транзакції, зміст нотаток яких близький до запиту.
-
-    Нерелевантні відсікаються за порогом: без нього пошук завжди повертав би
-    `top_k` записів, навіть коли в даних немає нічого схожого.
-    """
+async def embed_query(query_text: str) -> list[float] | None:
+    """Вектор запиту; рахується один раз, навіть якщо пошуків кілька."""
     # Модель ембедингів синхронна й важка: без відведення в потік вона
     # блокує весь сервер, включно зі статикою та /health.
-    vector = await run_in_threadpool(embed_one, query_text)
-    if vector is None:
-        return []
+    return await run_in_threadpool(embed_one, query_text)
 
+
+def _relevance(
+    user_id: uuid.UUID,
+    query_text: str,
+    vector: list[float],
+    threshold: float | None,
+    expenses_only: bool,
+    date_from: datetime.date | None,
+    date_to: datetime.date | None,
+):
+    """Відстань, оцінка й умови «запис стосується запиту».
+
+    Одні й ті самі умови для переліку й для підсумку: якщо вони розійдуться,
+    сума під відповіддю перестане відповідати показаним записам.
+    """
     # cosine_distance = 1 - cosine_similarity, тож більша схожість = менша відстань.
     distance = Transaction.embedding.cosine_distance(vector)
     similarity = 1 - distance
@@ -143,18 +141,49 @@ async def semantic_search(
     else:
         passes = score >= RELEVANCE_THRESHOLD
 
+    conditions = [
+        Transaction.user_id == user_id,
+        Transaction.embedding.is_not(None),
+        passes,
+        # Доходи й записи поза періодом відсіюємо ще до ліміту: інакше
+        # вони займали б місця в top_k і могли б витіснити справжні збіги.
+        *([Transaction.amount < 0] if expenses_only else []),
+        *date_bounds(date_from, date_to),
+    ]
+    return distance, score, conditions
+
+
+async def semantic_search(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    query_text: str,
+    # Навмисно щедро: однакова нотатка повторюється в різних транзакціях
+    # («Лате в «Львівській майстерні кави»» — 5 разів), і при малому top_k
+    # копії витіснили б інші релевантні нотатки. Відсікає поріг, а не ліміт.
+    top_k: int = 50,
+    threshold: float | None = None,
+    expenses_only: bool = False,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+    vector: list[float] | None = None,
+) -> list[SearchHit]:
+    """Повертає транзакції, зміст нотаток яких близький до запиту.
+
+    Нерелевантні відсікаються за порогом: без нього пошук завжди повертав би
+    `top_k` записів, навіть коли в даних немає нічого схожого.
+    """
+    if vector is None:
+        vector = await embed_query(query_text)
+    if vector is None:
+        return []
+
+    distance, score, conditions = _relevance(
+        user_id, query_text, vector, threshold, expenses_only, date_from, date_to
+    )
     rows = (
         await db.execute(
             select(Transaction, distance.label("distance"), score.label("score"))
-            .where(
-                Transaction.user_id == user_id,
-                Transaction.embedding.is_not(None),
-                passes,
-                # Доходи й записи поза періодом відсіюємо ще до ліміту: інакше
-                # вони займали б місця в top_k і могли б витіснити справжні збіги.
-                *([Transaction.amount < 0] if expenses_only else []),
-                *date_bounds(date_from, date_to),
-            )
+            .where(*conditions)
             .order_by(score.desc())
             .limit(top_k)
         )
@@ -164,3 +193,36 @@ async def semantic_search(
         SearchHit(transaction=row[0], similarity=1 - row[1], score=float(row[2]))
         for row in rows
     ]
+
+
+async def semantic_total(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    query_text: str,
+    threshold: float | None = None,
+    expenses_only: bool = False,
+    date_from: datetime.date | None = None,
+    date_to: datetime.date | None = None,
+    vector: list[float] | None = None,
+) -> tuple[Decimal, int]:
+    """Сума модулів і кількість усіх записів, що пройшли поріг.
+
+    Без LIMIT: перелік для показу обмежений, а підсумок — ні. Раніше гібрид
+    складав лише перші 200 знайдених, і за більшої кількості збігів сума
+    мовчки виходила меншою, ніж насправді.
+    """
+    if vector is None:
+        vector = await embed_query(query_text)
+    if vector is None:
+        return Decimal(0), 0
+
+    _, _, conditions = _relevance(user_id, query_text, vector, threshold, expenses_only, date_from, date_to)
+    row = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(func.abs(Transaction.amount)), 0),
+                func.count(Transaction.id),
+            ).where(*conditions)
+        )
+    ).one()
+    return Decimal(row[0]), int(row[1])

@@ -9,7 +9,7 @@ import pytest
 from app.models import Transaction
 from app.search import _alternatives, semantic_search
 from app.timeutils import previous_period
-from app.tools import query_transactions
+from app.tools import LIST_LIMIT, hybrid_search_and_sum, query_transactions, semantic_search_notes, tool_schemas
 
 D = datetime.date
 DIM = 384
@@ -157,3 +157,67 @@ async def test_date_filter_applies_before_limit(db, alice, fake_embedding):
         db, owner, "витрати через стрес", top_k=1, date_from=D(2026, 9, 1), date_to=D(2026, 9, 30)
     )
     assert [h.transaction.id for h in hits] == [september.id]
+
+
+# --- гібрид і період у RAG ---
+
+
+async def test_hybrid_sums_every_match_not_only_the_list(db, alice, fake_embedding):
+    """Сума й кількість — по всіх записах вище порога, а не по показаних."""
+    _, user_id = alice
+    owner = uuid.UUID(user_id)
+    db.add_all(
+        [
+            Transaction(
+                user_id=owner, amount=-(i + 1), category="кафе", spent_at=WHEN, note="Кава з собою", embedding=vector(0.8)
+            )
+            for i in range(250)
+        ]
+    )
+    await db.commit()
+
+    outcome = await hybrid_search_and_sum(db, owner, "кава з собою")
+
+    assert outcome.payload["total"] == sum(range(1, 251))
+    assert outcome.payload["count"] == 250
+    assert outcome.payload["shown"] == LIST_LIMIT
+    assert outcome.payload["truncated"] is True
+    assert len(outcome.transactions) == LIST_LIMIT
+
+
+async def test_hybrid_without_truncation_has_no_flag(db, alice, fake_embedding):
+    _, user_id = alice
+    owner = uuid.UUID(user_id)
+    for amount in (-100, -250):
+        await add_note(db, owner, "Кава з собою", 0.8, amount=amount)
+    # Нижче порога — не входить ні в суму, ні в перелік.
+    await add_note(db, owner, "Велика закупка продуктів", 0.3, amount=-900)
+
+    outcome = await hybrid_search_and_sum(db, owner, "кава з собою")
+
+    assert outcome.payload["total"] == 350
+    assert outcome.payload["count"] == outcome.payload["shown"] == 2
+    assert "truncated" not in outcome.payload
+
+
+async def test_semantic_search_notes_respects_period(db, alice, fake_embedding):
+    _, user_id = alice
+    owner = uuid.UUID(user_id)
+    september = await add_note(db, owner, "Кава з собою", 0.8)
+    october = await add_note(
+        db, owner, "Кава з собою", 0.8, when=datetime.datetime(2026, 10, 10, 12, tzinfo=datetime.timezone.utc)
+    )
+
+    outcome = await semantic_search_notes(db, owner, "кава з собою", date_from="2026-10-01", date_to="2026-10-31")
+    assert [t.id for t in outcome.transactions] == [october.id]
+
+    # null від моделі — означає «без обмеження періодом».
+    everything = await semantic_search_notes(db, owner, "кава з собою", date_from=None, date_to=None)
+    assert {t.id for t in everything.transactions} == {september.id, october.id}
+
+
+def test_semantic_search_schema_accepts_period():
+    schema = next(s for s in tool_schemas() if s["function"]["name"] == "semantic_search_notes")
+    properties = schema["function"]["parameters"]["properties"]
+    assert properties["date_from"]["type"] == ["string", "null"]
+    assert properties["date_to"]["type"] == ["string", "null"]
