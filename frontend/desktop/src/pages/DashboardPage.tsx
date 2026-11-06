@@ -216,14 +216,14 @@ export function DashboardPage() {
       </div>
       {chart}
       {categories}
-      {/* Транзакції й ліміти майже однакові заввишки, тож поруч не лишають порожнечі. */}
-      <div className="grid grid-cols-1 items-start gap-5 @4xl:grid-cols-2">
+      {/* Транзакції й ліміти майже однакові заввишки, а stretch вирівнює решту —
+          низ обох карток на одній лінії. Регулярні платежі — окремим рядком:
+          у колонці під лімітами вони робили праву половину вищою за ліву. */}
+      <div className="grid grid-cols-1 gap-5 @4xl:grid-cols-2">
         {recent}
-        <div className="space-y-5">
-          {limits}
-          <RecurringList reloadKey={dataVersion} />
-        </div>
+        {limits}
       </div>
+      <RecurringList reloadKey={dataVersion} />
     </div>
   );
 }

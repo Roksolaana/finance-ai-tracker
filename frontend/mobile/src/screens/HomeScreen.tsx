@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { MONTH_NAMES, monthKey, quickPrompts, type MonthStats, type RecurringPayment, type Transaction } from "@finance/shared";
+import { MONTH_NAMES, dayKey, monthKey, quickPrompts, type MonthStats, type RecurringPayment, type Transaction } from "@finance/shared";
 import { statsApi, transactionsApi } from "@/api";
 import { useAuth } from "@/AuthContext";
 import { categoryColor, money, signedMoney } from "@/format";
@@ -321,7 +321,9 @@ export function HomeScreen() {
                     {item.name}
                   </Text>
                   <Text style={styles.recurringNext}>
-                    наступне — {new Date(`${item.next_date}T12:00:00`).toLocaleDateString("uk-UA", { day: "numeric", month: "long" })}
+                    {/* Дата минула, а списання не записане — не «наступне». */}
+                    {item.next_date < dayKey(new Date()) ? "мало бути " : "наступне — "}
+                    {new Date(`${item.next_date}T12:00:00`).toLocaleDateString("uk-UA", { day: "numeric", month: "long" })}
                   </Text>
                 </View>
                 <Text style={styles.recurringAmount}>{money(item.average_amount)}</Text>

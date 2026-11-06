@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import { Repeat } from "lucide-react";
-import { CATEGORY_COLORS, createStatsApi, type RecurringPayment, type TransactionCategory } from "@finance/shared";
+import { CATEGORY_COLORS, createStatsApi, dayKey, type RecurringPayment, type TransactionCategory } from "@finance/shared";
 import { formatMoney } from "../lib/format";
 
 const statsApi = createStatsApi("/api/v1");
 
 function nextDateLabel(iso: string) {
-  return new Date(`${iso}T12:00:00`).toLocaleDateString("uk-UA", { day: "numeric", month: "long" });
+  const day = new Date(`${iso}T12:00:00`);
+  const label = day.toLocaleDateString("uk-UA", { day: "numeric", month: "long" });
+  // Дата вже минула, а списання не записане: «наступне — 4 листопада» 6-го
+  // читалося б як помилка.
+  return dayKey(day) < dayKey(new Date()) ? `мало бути ${label}` : `наступне — ${label}`;
 }
 
 /**
@@ -37,7 +41,7 @@ export function RecurringList({ reloadKey }: { reloadKey: number }) {
         <h3 className="card-title">Регулярні платежі</h3>
         <span className="font-mono text-xs text-muted">≈ {formatMoney(monthly)} / міс</span>
       </div>
-      <ul className="space-y-3">
+      <ul className="grid grid-cols-1 gap-x-8 gap-y-3 @2xl:grid-cols-2 @5xl:grid-cols-3">
         {items.map((item) => (
           <li key={`${item.name}-${item.next_date}`} className="flex items-center gap-3">
             <span
@@ -48,7 +52,7 @@ export function RecurringList({ reloadKey }: { reloadKey: number }) {
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{item.name}</p>
-              <p className="text-xs text-muted">наступне — {nextDateLabel(item.next_date)}</p>
+              <p className="text-xs text-muted">{nextDateLabel(item.next_date)}</p>
             </div>
             <span className="font-mono text-sm">{formatMoney(item.average_amount)}</span>
           </li>
