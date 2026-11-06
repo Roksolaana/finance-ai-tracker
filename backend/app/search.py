@@ -109,6 +109,7 @@ def _relevance(
     expenses_only: bool,
     date_from: datetime.date | None,
     date_to: datetime.date | None,
+    use_keywords: bool = True,
 ):
     """Відстань, оцінка й умови «запис стосується запиту».
 
@@ -125,7 +126,9 @@ def _relevance(
     # яке прямо стоїть у нотатці, додає до схожості бонус. Саме додає, а не
     # пропускає повз поріг: раніше будь-який збіг основи проходив, і на
     # «витрати на подарунки друзям» знаходився «Обід у кафе з друзями».
-    share = _keyword_share(_alternatives(query_text))
+    # use_keywords=False — лише для оцінки (eval/run_retrieval.py): так видно,
+    # що саме дає бонус порівняно з чистим вектором.
+    share = _keyword_share(_alternatives(query_text)) if use_keywords else None
     score = similarity + KEYWORD_BONUS * share if share is not None else similarity
 
     if threshold is not None:
@@ -166,6 +169,7 @@ async def semantic_search(
     date_from: datetime.date | None = None,
     date_to: datetime.date | None = None,
     vector: list[float] | None = None,
+    use_keywords: bool = True,
 ) -> list[SearchHit]:
     """Повертає транзакції, зміст нотаток яких близький до запиту.
 
@@ -178,7 +182,7 @@ async def semantic_search(
         return []
 
     distance, score, conditions = _relevance(
-        user_id, query_text, vector, threshold, expenses_only, date_from, date_to
+        user_id, query_text, vector, threshold, expenses_only, date_from, date_to, use_keywords
     )
     rows = (
         await db.execute(

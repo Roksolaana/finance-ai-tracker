@@ -221,3 +221,14 @@ def test_semantic_search_schema_accepts_period():
     properties = schema["function"]["parameters"]["properties"]
     assert properties["date_from"]["type"] == ["string", "null"]
     assert properties["date_to"]["type"] == ["string", "null"]
+
+
+async def test_keyword_bonus_can_be_switched_off_for_evaluation(db, alice, fake_embedding):
+    _, user_id = alice
+    owner = uuid.UUID(user_id)
+    cosmetics = await add_note(db, owner, "Зайшла в магазин косметики, трохи щоб зняти стрес", 0.27)
+
+    with_bonus = await semantic_search(db, owner, "витрати через стрес")
+    vector_only = await semantic_search(db, owner, "витрати через стрес", use_keywords=False)
+    assert [h.transaction.id for h in with_bonus] == [cosmetics.id]
+    assert vector_only == []
