@@ -12,7 +12,8 @@ export type Route =
   | { name: "transaction"; transaction: Transaction }
   | { name: "add"; kind?: "expense" | "income"; edit?: Transaction; onSaved?: (saved: Transaction) => void }
   | { name: "budgets" }
-  | { name: "profile" };
+  | { name: "profile" }
+  | { name: "account" };
 
 export type TabKey = "home" | "transactions" | "analytics" | "chat";
 

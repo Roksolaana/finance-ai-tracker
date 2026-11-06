@@ -10,6 +10,7 @@ import { TransactionsScreen } from "@/screens/TransactionsScreen";
 import { TransactionScreen } from "@/screens/TransactionScreen";
 import { AddScreen } from "@/screens/AddScreen";
 import { AnalyticsScreen } from "@/screens/AnalyticsScreen";
+import { AccountScreen } from "@/screens/AccountScreen";
 import { BudgetsScreen } from "@/screens/BudgetsScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
@@ -45,6 +46,8 @@ function renderRoute(route: Route) {
       return <BudgetsScreen />;
     case "profile":
       return <ProfileScreen />;
+    case "account":
+      return <AccountScreen />;
   }
 }
 

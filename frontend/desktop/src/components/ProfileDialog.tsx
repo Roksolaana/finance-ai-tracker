@@ -1,5 +1,7 @@
+import { useState, type FormEvent, type ReactNode } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { LogOut, X } from "lucide-react";
+import { ApiError } from "@finance/shared";
+import { KeyRound, LogOut, MonitorSmartphone, Trash2, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTransactions } from "../context/TransactionsContext";
 import { useUi } from "../context/UiContext";
@@ -12,6 +14,137 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-2xl bg-milk px-4 py-3.5">
       <p className="eyebrow text-[10px] text-muted">{label}</p>
       <p className="mt-1.5 truncate font-display text-[17px] font-semibold tracking-tight">{value}</p>
+    </div>
+  );
+}
+
+type SecurityMode = "password" | "logout-all" | "delete" | null;
+
+/**
+ * Пароль, сесії й видалення акаунта.
+ *
+ * Небезпечні дії не виконуються одним кліком: кнопка лише розгортає
+ * підтвердження, а видалення ще й просить пароль — випадковий клік не має
+ * стерти всі дані.
+ */
+function AccountSecurity({ onDone }: { onDone: () => void }) {
+  const { changePassword, logoutAll, deleteAccount } = useAuth();
+  const { showToast } = useUi();
+  const [mode, setMode] = useState<SecurityMode>(null);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const open = (value: SecurityMode) => {
+    setMode(mode === value ? null : value);
+    setCurrent("");
+    setNext("");
+    setError(null);
+  };
+
+  const run = async (action: () => Promise<void>, success?: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      if (success) showToast(success);
+      setMode(null);
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не вдалося виконати дію. Спробуйте ще раз");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (mode === "password") {
+      if (next.length < 8) {
+        setError("Новий пароль має бути щонайменше 8 символів");
+        return;
+      }
+      void run(() => changePassword(current, next), "Пароль змінено. Інші пристрої вийшли з акаунта");
+    } else if (mode === "delete") {
+      void run(() => deleteAccount(current));
+    } else if (mode === "logout-all") {
+      void run(logoutAll);
+    }
+  };
+
+  const row = (value: Exclude<SecurityMode, null>, icon: ReactNode, label: string, danger = false) => (
+    <button
+      type="button"
+      onClick={() => open(value)}
+      aria-expanded={mode === value}
+      className={`flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm transition-colors hover:bg-milk ${
+        danger ? "text-negative" : "text-ink"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+
+  return (
+    <div className="mt-4 rounded-2xl border border-line p-1.5">
+      {row("password", <KeyRound size={16} className="text-olive" />, "Змінити пароль")}
+      {row("logout-all", <MonitorSmartphone size={16} className="text-olive" />, "Вийти на всіх пристроях")}
+      {row("delete", <Trash2 size={16} />, "Видалити акаунт", true)}
+
+      {mode && (
+        <form onSubmit={submit} className="space-y-3 px-3 pb-3 pt-2">
+          {mode === "logout-all" && (
+            <p className="text-sm text-muted">Усі сесії, включно з цією, завершаться. Увійти можна буде тим самим паролем.</p>
+          )}
+          {mode === "delete" && (
+            <p className="text-sm text-negative">
+              Буде видалено акаунт і всі дані: операції, ліміти, розмову з асистентом. Скасувати це не можна.
+            </p>
+          )}
+          {(mode === "password" || mode === "delete") && (
+            <label className="block">
+              <span className="label">{mode === "delete" ? "Пароль для підтвердження" : "Поточний пароль"}</span>
+              <input
+                type="password"
+                className="input"
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+                autoComplete="current-password"
+                autoFocus
+                required
+              />
+            </label>
+          )}
+          {mode === "password" && (
+            <label className="block">
+              <span className="label">Новий пароль</span>
+              <input
+                type="password"
+                className="input"
+                value={next}
+                onChange={(e) => setNext(e.target.value)}
+                placeholder="щонайменше 8 символів"
+                autoComplete="new-password"
+                required
+              />
+            </label>
+          )}
+          {error && (
+            <p role="alert" className="rounded-xl bg-negative-tint px-3 py-2 text-sm text-negative">
+              {error}
+            </p>
+          )}
+          <button
+            type="submit"
+            disabled={busy}
+            className={`${mode === "password" ? "btn-primary" : "btn-danger"} h-10 w-full`}
+          >
+            {mode === "password" ? "Зберегти пароль" : mode === "delete" ? "Видалити назавжди" : "Вийти всюди"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }
@@ -62,6 +195,7 @@ export function ProfileDialog() {
               />
             </div>
 
+            <AccountSecurity onDone={() => setProfileOpen(false)} />
 
             <button
               onClick={() => {

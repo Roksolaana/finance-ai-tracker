@@ -38,10 +38,11 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
-def create_token(user_id: uuid.UUID) -> str:
+def create_token(user: User) -> str:
     now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
-        "sub": str(user_id),
+        "sub": str(user.id),
+        "ver": user.token_version,
         "iat": now,
         "exp": now + datetime.timedelta(hours=settings.JWT_TTL_HOURS),
     }
@@ -58,11 +59,18 @@ async def get_current_user(
     try:
         payload = jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=[ALGORITHM])
         user_id = uuid.UUID(payload["sub"])
-    except (jwt.InvalidTokenError, KeyError, ValueError):
+        # Токени, видані до появи версій, не мають `ver` — це версія 0. Вони
+        # діють, поки акаунт нічого не відкликав, тож оновлення сервера
+        # нікого не викидає з акаунта.
+        version = int(payload.get("ver", 0))
+    except (jwt.InvalidTokenError, KeyError, ValueError, TypeError):
         raise CREDENTIALS_ERROR
 
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if user is None:
         # Токен підписаний правильно, але акаунт уже видалено.
+        raise CREDENTIALS_ERROR
+    if version != user.token_version:
+        # Після зміни пароля чи «вийти на всіх пристроях».
         raise CREDENTIALS_ERROR
     return user

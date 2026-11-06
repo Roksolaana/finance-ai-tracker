@@ -62,6 +62,19 @@ class LoginRequest(BaseModel):
     _lower_email = field_validator("email")(lambda cls, v: v.lower())
 
 
+class ChangePasswordRequest(BaseModel):
+    """Зміна пароля: поточний підтверджує, що це власник, а не чужий відкритий ноутбук."""
+
+    current_password: str = Field(..., max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128, description="Мінімум 8 символів")
+
+
+class DeleteAccountRequest(BaseModel):
+    """Видалення акаунта — лише з паролем: дію не можна скасувати."""
+
+    password: str = Field(..., max_length=128)
+
+
 class UserRead(BaseModel):
     """Публічні дані акаунта — без хеша пароля."""
 

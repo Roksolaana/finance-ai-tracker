@@ -34,5 +34,23 @@ export function createAuthApi(baseUrl: string = API_URL) {
     async me(): Promise<AuthUser> {
       return request<AuthUser>(`${root}/me`);
     },
+    /**
+     * Міняє пароль. Сервер відкликає всі старі токени й повертає новий —
+     * його треба зберегти, інакше наступний запит отримає 401.
+     */
+    async changePassword(currentPassword: string, newPassword: string): Promise<AuthResult> {
+      return request<AuthResult>(`${root}/change-password`, {
+        method: "POST",
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      });
+    },
+    /** Відкликає всі токени акаунта, включно з поточним. */
+    async logoutAll(): Promise<void> {
+      return request<void>(`${root}/logout-all`, { method: "POST" });
+    },
+    /** Видаляє акаунт і всі його дані. Скасувати не можна. */
+    async deleteAccount(password: string): Promise<void> {
+      return request<void>(`${root}/me`, { method: "DELETE", body: JSON.stringify({ password }) });
+    },
   };
 }

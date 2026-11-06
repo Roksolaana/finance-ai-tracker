@@ -4,7 +4,7 @@ import datetime
 import uuid
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Numeric, String, Text, func
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -43,6 +43,15 @@ class User(Base):
         String(100),
         nullable=False,
         comment="Імʼя, яке показується в інтерфейсі",
+    )
+    # Має збігатися з клеймом `ver` у токені: так можна відкликати всі
+    # видані токени разом, хоча JWT сам по собі не відкликається.
+    token_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+        comment="Версія токенів; збільшується, щоб відкликати всі видані раніше",
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),

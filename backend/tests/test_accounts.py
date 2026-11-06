@@ -1,13 +1,19 @@
 """Акаунти: власник кожної транзакції, захист входу, керування акаунтом."""
 
+import datetime
+import uuid
+
+import jwt
 import pytest
 from alembic import command
 from conftest import register, run_sql
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 
+from app.database import settings
 from app.main import app
 from app.migrate import alembic_config
+from app.models import Budget, BudgetHistory, ChatMessage, Transaction
 from app.ratelimit import RateLimiter
 
 # --- власник транзакції ---
@@ -103,3 +109,113 @@ async def test_successful_login_resets_failures(client, alice):
     # Лічильник почався заново — ще чотири помилки не блокують.
     for _ in range(4):
         assert (await login(client)).status_code == 401
+
+
+# --- керування акаунтом ---
+
+ME = "/api/v1/auth/me"
+
+
+async def change_password(client, headers, current="password123", new="new-password-456"):
+    return await client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": current, "new_password": new},
+        headers=headers,
+    )
+
+
+async def test_change_password_revokes_old_tokens(client, alice):
+    headers, _ = alice
+    # Другий пристрій з окремим токеном.
+    other_device = {"Authorization": f"Bearer {(await login(client, password='password123')).json()['access_token']}"}
+
+    response = await change_password(client, headers)
+    assert response.status_code == 200
+    fresh = {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+    # Пристрій, з якого змінили пароль, лишається в акаунті з новим токеном.
+    assert (await client.get(ME, headers=fresh)).status_code == 200
+    assert (await client.get(ME, headers=headers)).status_code == 401
+    assert (await client.get(ME, headers=other_device)).status_code == 401
+
+    assert (await login(client, password="password123")).status_code == 401
+    assert (await login(client, password="new-password-456")).status_code == 200
+
+
+async def test_change_password_needs_current_one(client, alice):
+    headers, _ = alice
+    response = await change_password(client, headers, current="not-my-password")
+    # 400, а не 401: на 401 клієнт вважає токен недійсним і виходить з акаунта.
+    assert response.status_code == 400
+    assert "поточний пароль" in response.json()["detail"]
+    assert (await client.get(ME, headers=headers)).status_code == 200
+    assert (await login(client, password="password123")).status_code == 200
+
+
+async def test_new_password_is_validated(client, alice):
+    headers, _ = alice
+    assert (await change_password(client, headers, new="short")).status_code == 422
+
+
+async def test_logout_all_revokes_every_token(client, alice):
+    headers, _ = alice
+    other_device = {"Authorization": f"Bearer {(await login(client, password='password123')).json()['access_token']}"}
+
+    assert (await client.post("/api/v1/auth/logout-all", headers=headers)).status_code == 204
+
+    assert (await client.get(ME, headers=headers)).status_code == 401
+    assert (await client.get(ME, headers=other_device)).status_code == 401
+    # Пароль той самий — увійти знову можна.
+    relogin = await login(client, password="password123")
+    assert relogin.status_code == 200
+    assert (await client.get(ME, headers={"Authorization": f"Bearer {relogin.json()['access_token']}"})).status_code == 200
+
+
+async def test_token_without_version_works_until_revoked(client, alice):
+    """Токени, видані до появи `ver`, діють, доки акаунт не відкличе всі сесії."""
+    headers, user_id = alice
+    legacy = jwt.encode(
+        {
+            "sub": user_id,
+            "iat": datetime.datetime.now(datetime.timezone.utc),
+            "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+        },
+        settings.JWT_SECRET,
+        algorithm="HS256",
+    )
+    legacy_headers = {"Authorization": f"Bearer {legacy}"}
+    assert (await client.get(ME, headers=legacy_headers)).status_code == 200
+
+    await client.post("/api/v1/auth/logout-all", headers=headers)
+    assert (await client.get(ME, headers=legacy_headers)).status_code == 401
+
+
+async def test_delete_account_removes_all_data(client, db, alice, bob):
+    headers, user_id = alice
+    bob_headers, bob_id = bob
+    owner = uuid.UUID(user_id)
+    for who in (owner, uuid.UUID(bob_id)):
+        db.add_all(
+            [
+                Transaction(user_id=who, amount=-100, category="їжа", note="Обід"),
+                Budget(user_id=who, category="їжа", monthly_limit=1000),
+                ChatMessage(user_id=who, role="user", content="Привіт"),
+            ]
+        )
+    await db.commit()
+    await client.put("/api/v1/budgets/", json=[{"category": "кафе", "monthly_limit": 500}], headers=headers)
+
+    wrong = await client.request("DELETE", ME, json={"password": "not-my-password"}, headers=headers)
+    assert wrong.status_code == 400
+    assert (await client.get(ME, headers=headers)).status_code == 200
+
+    response = await client.request("DELETE", ME, json={"password": "password123"}, headers=headers)
+    assert response.status_code == 204
+
+    assert (await client.get(ME, headers=headers)).status_code == 401
+    assert (await login(client, password="password123")).status_code == 401
+    for model in (Transaction, Budget, BudgetHistory, ChatMessage):
+        left = (await db.execute(select(func.count()).select_from(model).where(model.user_id == owner))).scalar_one()
+        assert left == 0, model.__tablename__
+    # Чужі дані на місці.
+    assert (await client.get("/api/v1/transactions/", headers=bob_headers)).json()["total"] == 1

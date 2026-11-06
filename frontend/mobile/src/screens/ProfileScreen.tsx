@@ -95,7 +95,8 @@ export function ProfileScreen() {
 
         {/* Аналітика й асистент — у нижньому меню; лімітів там немає, тож вони тут. */}
         <Card style={styles.menu}>
-          <MenuRow icon="speedometer-outline" label="Ліміти бюджету" onPress={() => push({ name: "budgets" })} last />
+          <MenuRow icon="speedometer-outline" label="Ліміти бюджету" onPress={() => push({ name: "budgets" })} />
+          <MenuRow icon="shield-checkmark-outline" label="Пароль і безпека" onPress={() => push({ name: "account" })} last />
         </Card>
 
         <Card style={styles.menu}>

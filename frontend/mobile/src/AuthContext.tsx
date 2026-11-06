@@ -32,6 +32,9 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => void;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  logoutAll: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -115,6 +118,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await apply(await authApi.register(email, password, displayName));
       },
       logout,
+      // Старий токен після зміни пароля вже недійсний — зберігаємо новий.
+      changePassword: async (currentPassword, newPassword) => {
+        await apply(await authApi.changePassword(currentPassword, newPassword));
+      },
+      // Поточний токен відкликано разом з іншими, тож виходимо й тут.
+      logoutAll: async () => {
+        await authApi.logoutAll();
+        logout();
+      },
+      deleteAccount: async (password) => {
+        await authApi.deleteAccount(password);
+        logout();
+      },
     };
   }, [user, checking, offline, logout]);
 
