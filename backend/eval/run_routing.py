@@ -173,7 +173,8 @@ def _percent(part: int, whole: int) -> str:
 
 
 COMPARISON_FIELDS = [
-    "модель", "кейсів", "строга точність", "мʼяка точність", "аргументи вірні", "faithfulness", "середній час вибору, с",
+    "модель", "кейсів", "строга точність", "мʼяка точність", "аргументи вірні", "faithfulness",
+    "медіана часу вибору, с", "середній час вибору, с",
 ]
 
 
@@ -200,6 +201,7 @@ def write_comparison(model: str, answers: bool, summary) -> None:
             "строга точність": f"{share(summary.strict, summary.total):.3f}",
             "мʼяка точність": f"{share(summary.soft, summary.total):.3f}",
             "аргументи вірні": f"{share(summary.args_ok, summary.args_total):.3f}",
+            "медіана часу вибору, с": f"{summary.median_seconds:.2f}",
             "середній час вибору, с": f"{summary.seconds:.2f}",
         }
     rows[model] = {field: row.get(field, "") for field in COMPARISON_FIELDS}
@@ -293,7 +295,7 @@ async def main() -> int:
     print(f"Аргументи вірні:                       {_percent(summary.args_ok, summary.args_total)}")
     if args.answers:
         print(f"Відповіді без вигаданих чисел:         {_percent(summary.faithful, summary.answers_total)}")
-    print(f"Середній час на запит:                 {summary.seconds:.2f} с")
+    print(f"Час на запит: медіана {summary.median_seconds:.2f} с, середнє {summary.seconds:.2f} с")
 
     print("\nСтрога точність за типом запиту:")
     for path in PATHS:

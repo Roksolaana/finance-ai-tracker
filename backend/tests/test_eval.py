@@ -108,6 +108,7 @@ def test_summary_counts_failed_calls_as_wrong():
     assert (summary.args_total, summary.args_ok) == (2, 1)
     assert (summary.answers_total, summary.faithful) == (2, 1)
     assert summary.seconds == 2.0
+    assert summary.median_seconds == 2.0
 
 
 # --- фікстура й оцінка пошуку ---

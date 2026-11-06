@@ -4,6 +4,7 @@
 тестами без виклику моделі.
 """
 
+import statistics
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
@@ -58,6 +59,9 @@ class Summary:
     answers_total: int = 0
     faithful: int = 0
     seconds: float = 0.0
+    # Медіана стійка до кількох кейсів, що чекали на ліміт провайдера:
+    # на безкоштовному тарифі середнє міряє радше чергу, ніж модель.
+    median_seconds: float = 0.0
 
     @staticmethod
     def share(part: int, whole: int) -> float | None:
@@ -83,6 +87,7 @@ def summarise(rows: Iterable[dict[str, Any]]) -> Summary:
         answers_total=len(answered),
         faithful=sum(bool(r["faithful"]) for r in answered),
         seconds=sum(timed) / len(timed) if timed else 0.0,
+        median_seconds=statistics.median(timed) if timed else 0.0,
     )
 
 
