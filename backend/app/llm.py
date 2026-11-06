@@ -1,8 +1,14 @@
-"""Клієнт до LLM (Groq через OpenAI-сумісний API)."""
+"""Клієнт до LLM через OpenAI-сумісний API.
+
+Провайдер задається адресою: Groq у хмарі або Ollama на цьому ж комп'ютері.
+Код однаковий — різниться лише LLM_BASE_URL, ключ і модель.
+"""
 
 import asyncio
 import logging
 from typing import Any
+
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -11,6 +17,9 @@ from app.database import settings
 logger = logging.getLogger(__name__)
 
 TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+# Локальна модель на ноутбуці думає довше за хмару: на довгому промпті з
+# описом інструментів відповідь може йти кілька хвилин.
+LOCAL_TIMEOUT = httpx.Timeout(300.0, connect=5.0)
 RATE_LIMIT_RETRIES = 3
 
 
@@ -18,8 +27,20 @@ class LLMUnavailable(RuntimeError):
     """Ключ не заданий або провайдер не відповів."""
 
 
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def _api_key() -> str:
+    return settings.LLM_API_KEY or settings.GROQ_API_KEY
+
+
+def is_local() -> bool:
+    """Модель на цьому ж комп'ютері (Ollama): ключа немає, дані нікуди не йдуть."""
+    return urlsplit(settings.LLM_BASE_URL).hostname in _LOCAL_HOSTS
+
+
 def is_configured() -> bool:
-    return bool(settings.GROQ_API_KEY)
+    return bool(_api_key()) or is_local()
 
 
 async def chat_completion(
@@ -33,7 +54,7 @@ async def chat_completion(
     `model` — для порівняння моделей в eval; застосунок завжди бере LLM_MODEL.
     """
     if not is_configured():
-        raise LLMUnavailable("Не задано GROQ_API_KEY")
+        raise LLMUnavailable("Не задано ключ LLM (LLM_API_KEY)")
 
     body: dict[str, Any] = {
         "model": model or settings.LLM_MODEL,
@@ -48,13 +69,13 @@ async def chat_completion(
         # відповідь там нічого не дає.
         body["tool_choice"] = tool_choice or "auto"
 
-    headers = {
-        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-        # Без власного User-Agent Cloudflare перед Groq віддає 403.
-        "User-Agent": "krona/0.1",
-    }
+    # Без власного User-Agent Cloudflare перед Groq віддає 403.
+    headers = {"User-Agent": "krona/0.1"}
+    # Локальній моделі ключ не потрібен — і не варто його кудись надсилати.
+    if _api_key():
+        headers["Authorization"] = f"Bearer {_api_key()}"
 
-    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=LOCAL_TIMEOUT if is_local() else TIMEOUT) as client:
         for attempt in range(RATE_LIMIT_RETRIES + 1):
             try:
                 response = await client.post(

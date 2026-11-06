@@ -29,10 +29,13 @@ class Settings(BaseSettings):
     JWT_SECRET: str = ""
     JWT_TTL_HOURS: int = 24 * 30
 
-    # LLM для AI-чату. Порожній ключ = чат вимкнений, решта застосунку працює.
+    # LLM для AI-чату. Без ключа й без локальної моделі чат вимкнений, решта
+    # застосунку працює. Будь-який OpenAI-сумісний провайдер: Groq, або
+    # Ollama на цьому ж комп'ютері (LLM_BASE_URL=http://localhost:11434/v1) —
+    # тоді ключ не потрібен і дані не виходять за межі машини.
+    LLM_API_KEY: str = ""
+    # Стара назва ключа: .env, створені до появи LLM_API_KEY, працюють далі.
     GROQ_API_KEY: str = ""
-    # API Groq сумісний з OpenAI, тому базову адресу й модель винесено в
-    # налаштування — зміна провайдера не потребує правок у коді.
     LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
     LLM_MODEL: str = "openai/gpt-oss-120b"
 
