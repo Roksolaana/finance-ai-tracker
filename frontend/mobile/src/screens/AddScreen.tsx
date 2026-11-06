@@ -73,6 +73,33 @@ export function AddScreen({
   const [when, setWhen] = useState(() => (edit ? new Date(edit.spent_at) : new Date()));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [description, setDescription] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [filled, setFilled] = useState(false);
+
+  // Чернетка лише заповнює поля — зберігає людина сама, перевіривши їх.
+  const fillFromDescription = async () => {
+    if (parsing || !description.trim()) return;
+    setParsing(true);
+    setError(null);
+    try {
+      const draft = await transactionsApi.parse(description);
+      const income = draft.amount !== null && draft.amount > 0;
+      setKind(income ? "income" : "expense");
+      if (draft.amount !== null) setAmount(String(Math.abs(draft.amount)));
+      if (!income && draft.category !== "дохід") setCategory(draft.category);
+      // Дата з майбутнього тут неможлива, але годинник телефона може відставати.
+      const spentAt = new Date(draft.spent_at);
+      setWhen(spentAt.getTime() > Date.now() ? new Date() : spentAt);
+      setNote(draft.note ?? "");
+      setTags(draft.tags);
+      setFilled(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не вдалося розібрати опис");
+    } finally {
+      setParsing(false);
+    }
+  };
 
   const now = new Date();
   const isToday = sameDay(when, now);
@@ -133,6 +160,45 @@ export function AddScreen({
     <KeyboardAvoidingView style={ui.screen} behavior="padding">
       <ScreenHeader title={title} />
       <ScrollView contentContainerStyle={[ui.content, styles.content]} keyboardShouldPersistTaps="handled">
+        {!edit && (
+          <View style={styles.section}>
+            <Text style={styles.label}>Опишіть витрату</Text>
+            <View style={styles.describeRow}>
+              <TextInput
+                value={description}
+                onChangeText={(text) => {
+                  setDescription(text);
+                  setFilled(false);
+                }}
+                placeholder="вчора таксі 230, бо проспала"
+                placeholderTextColor={theme.muted}
+                style={[styles.input, styles.describeInput]}
+                maxLength={500}
+                returnKeyType="done"
+                onSubmitEditing={fillFromDescription}
+              />
+              <Pressable
+                onPress={fillFromDescription}
+                disabled={parsing || !description.trim()}
+                accessibilityRole="button"
+                accessibilityLabel="Заповнити форму з опису"
+                style={({ pressed }) => [
+                  styles.describeButton,
+                  (parsing || !description.trim()) && styles.describeDisabled,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                {parsing ? (
+                  <ActivityIndicator color={theme.olive} />
+                ) : (
+                  <Ionicons name="sparkles-outline" size={20} color={theme.olive} />
+                )}
+              </Pressable>
+            </View>
+            {filled && <Text style={styles.hint}>Поля заповнено — перевірте й збережіть</Text>}
+          </View>
+        )}
+
         <View style={styles.segmented}>
           {([
             ["expense", "Витрата"],
@@ -301,6 +367,16 @@ const styles = StyleSheet.create({
   section: { gap: 8 },
   label: { fontSize: 14, color: theme.ink, fontWeight: "600" },
   tags: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  describeRow: { flexDirection: "row", gap: 8, alignItems: "stretch" },
+  describeInput: { flex: 1 },
+  describeButton: {
+    width: 52,
+    borderRadius: 16,
+    backgroundColor: theme.oliveTint,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  describeDisabled: { opacity: 0.5 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tile: {
     width: "23%",

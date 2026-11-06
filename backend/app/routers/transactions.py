@@ -13,11 +13,20 @@ from app.auth import get_current_user
 from app.constants import DATE_RANGE_ERROR
 from app.database import get_db
 from app.models import Transaction, User
-from app.schemas import TransactionCreate, TransactionList, TransactionRead
+from app.llm import is_configured
+from app.parsing import parse
+from app.ratelimit import RateLimiter
+from app.schemas import ParseRequest, TransactionCreate, TransactionDraft, TransactionList, TransactionRead
 from app.embeddings import embed_one
 from app.timeutils import in_date_range, local_midnight
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+# Розбір фрази моделлю — це запит до того самого спільного ключа LLM, що й
+# чат. Понад ліміт не відмовляємо, а розбираємо правилами: чернетку людина
+# однаково перевіряє у формі, а квота лишається для асистента.
+PARSE_LLM_LIMIT = 30
+_parse_requests = RateLimiter(window=600.0)
 
 
 @router.post(
@@ -49,6 +58,19 @@ async def create_transaction(
     await db.commit()
     await db.refresh(transaction)
     return transaction
+
+
+@router.post("/parse", response_model=TransactionDraft, summary="Чернетка транзакції з опису")
+async def parse_transaction(
+    payload: ParseRequest,
+    user: User = Depends(get_current_user),
+) -> TransactionDraft:
+    """Розбирає опис своїми словами в поля форми. Нічого не зберігає."""
+    use_llm = is_configured() and _parse_requests.retry_after(user.id, PARSE_LLM_LIMIT) is None
+    if use_llm:
+        _parse_requests.record(user.id)
+    draft = await parse(payload.text, use_llm)
+    return TransactionDraft(**draft.__dict__)
 
 
 def _escape_like(value: str) -> str:

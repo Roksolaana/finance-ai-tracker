@@ -1,13 +1,23 @@
 import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
-import { EXPENSE_CATEGORIES, MOOD_TAGS, dayKey, monthKey, type MoodTag, type TransactionCategory } from "@finance/shared";
+import { Sparkles, X } from "lucide-react";
+import {
+  EXPENSE_CATEGORIES,
+  MOOD_TAGS,
+  createTransactionsApi,
+  dayKey,
+  monthKey,
+  type MoodTag,
+  type TransactionCategory,
+} from "@finance/shared";
 import { useTransactions } from "../context/TransactionsContext";
 import { useUi } from "../context/UiContext";
 import { CategoryIcon } from "./CategoryIcon";
 import { formatMonth } from "../lib/format";
 
 type Kind = "expense" | "income";
+
+const parser = createTransactionsApi("/api/v1");
 
 function combineDateWithTime(date: string, timeSource: Date) {
   const [y, m, d] = date.split("-").map(Number);
@@ -27,10 +37,15 @@ export function TransactionFormDialog() {
   const [tags, setTags] = useState<MoodTag[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [description, setDescription] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [filled, setFilled] = useState(false);
 
   useEffect(() => {
     if (!form) return;
     setError(null);
+    setDescription("");
+    setFilled(false);
     if (editing) {
       setKind(editing.amount > 0 ? "income" : "expense");
       setAmount(String(Math.abs(editing.amount)));
@@ -47,6 +62,29 @@ export function TransactionFormDialog() {
       setTags([]);
     }
   }, [form, editing]);
+
+  // Чернетка лише заповнює поля — зберігає людина сама, перевіривши їх.
+  const fillFromDescription = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (parsing || !description.trim()) return;
+    setParsing(true);
+    setError(null);
+    try {
+      const draft = await parser.parse(description);
+      const income = draft.amount !== null && draft.amount > 0;
+      setKind(income ? "income" : "expense");
+      if (draft.amount !== null) setAmount(String(Math.abs(draft.amount)));
+      if (!income && draft.category !== "дохід") setCategory(draft.category);
+      setDate(dayKey(draft.spent_at));
+      setNote(draft.note ?? "");
+      setTags(draft.tags);
+      setFilled(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не вдалося розібрати опис");
+    } finally {
+      setParsing(false);
+    }
+  };
 
   const toggleTag = (tag: MoodTag) =>
     setTags((current) => (current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag]));
@@ -123,6 +161,30 @@ export function TransactionFormDialog() {
             </Dialog.Close>
           </div>
           <Dialog.Description className="sr-only">Форма транзакції</Dialog.Description>
+
+          {!editing && (
+            <form onSubmit={fillFromDescription} className="mb-5">
+              <label className="label" htmlFor="describe">Опишіть витрату</label>
+              <div className="flex gap-2">
+                <input
+                  id="describe"
+                  value={description}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    setFilled(false);
+                  }}
+                  placeholder="вчора таксі 230, бо проспала"
+                  className="input"
+                  maxLength={500}
+                />
+                <button type="submit" disabled={parsing || !description.trim()} className="btn-ghost shrink-0">
+                  <Sparkles size={15} className="text-olive" />
+                  {parsing ? "Розбираю…" : "Заповнити"}
+                </button>
+              </div>
+              {filled && <p className="mt-1.5 text-[11px] text-muted">Поля заповнено — перевірте й натисніть «Додати».</p>}
+            </form>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="segmented w-full [&>button]:flex-1" role="group" aria-label="Тип транзакції">

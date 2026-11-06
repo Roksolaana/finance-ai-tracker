@@ -26,6 +26,7 @@ async def chat_completion(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,
     model: str | None = None,
+    tool_choice: str | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Один виклик моделі. Повертає об'єкт message з відповіді.
 
@@ -43,7 +44,9 @@ async def chat_completion(
     }
     if tools:
         body["tools"] = tools
-        body["tool_choice"] = "auto"
+        # Розбір фрази в чернетку примушує конкретний інструмент: текстова
+        # відповідь там нічого не дає.
+        body["tool_choice"] = tool_choice or "auto"
 
     headers = {
         "Authorization": f"Bearer {settings.GROQ_API_KEY}",

@@ -23,6 +23,7 @@ from app.main import app
 from app.migrate import upgrade_to_head
 from app.routers import auth as auth_router
 from app.routers import chat as chat_router
+from app.routers import transactions as transactions_router
 
 TEST_DB = "finance_test"
 MAIN_URL = make_url(settings.DATABASE_URL)
@@ -109,6 +110,7 @@ def fresh_rate_limits():
     yield
     auth_router._failed_logins.clear()
     chat_router._recent_requests.clear()
+    transactions_router._parse_requests.clear()
 
 
 @pytest.fixture(autouse=True)

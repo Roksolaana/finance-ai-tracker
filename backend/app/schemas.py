@@ -204,6 +204,33 @@ class TransactionRead(BaseModel):
     created_at: datetime.datetime
 
 
+class ParseRequest(BaseModel):
+    """Опис витрати своїми словами: «вчора таксі 230»."""
+
+    text: str = Field(..., min_length=1, max_length=500, examples=["кава 85 бо не виспалась"])
+
+    @field_validator("text")
+    @classmethod
+    def strip_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Опишіть витрату хоча б кількома словами")
+        return value
+
+
+class TransactionDraft(BaseModel):
+    """Чернетка для форми — ще не збережена транзакція."""
+
+    # None — суми в тексті не знайшлося, людина допише її у формі.
+    amount: float | None
+    category: str
+    spent_at: datetime.datetime
+    note: str | None
+    tags: list[str]
+    # Хто розібрав: мовна модель чи прості правила (без ключа або як запасний).
+    source: Literal["llm", "rules"]
+
+
 class TransactionList(BaseModel):
     """Обгортка для списку транзакцій з пагінацією."""
 

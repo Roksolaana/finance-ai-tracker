@@ -20,6 +20,17 @@ interface ApiTransaction {
   created_at: string;
 }
 
+/** Чернетка з опису своїми словами: ще не збережена, заповнює форму. */
+export interface TransactionDraft {
+  /** null — суми в тексті не знайшлося. Знак уже поставлено за категорією. */
+  amount: number | null;
+  category: TransactionCategory;
+  spent_at: string;
+  note: string | null;
+  tags: MoodTag[];
+  source: "llm" | "rules";
+}
+
 interface ApiTransactionList {
   items: ApiTransaction[];
   total: number;
@@ -68,6 +79,16 @@ export function createTransactionsApi(baseUrl: string = API_URL) {
     },
     async remove(id: string): Promise<void> {
       await request<void>(`${root}/${id}`, { method: "DELETE" });
+    },
+    /** Розбирає «вчора таксі 230» у поля форми. Нічого не зберігає. */
+    async parse(text: string): Promise<TransactionDraft> {
+      const draft = await request<TransactionDraft & { category: string; tags: string[] }>(`${root}/parse`, {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      });
+      const category = (CATEGORIES as string[]).includes(draft.category) ? (draft.category as TransactionCategory) : "інше";
+      const tags = draft.tags.filter((t): t is MoodTag => (MOOD_TAGS as string[]).includes(t));
+      return { ...draft, category, tags };
     },
   };
 }
