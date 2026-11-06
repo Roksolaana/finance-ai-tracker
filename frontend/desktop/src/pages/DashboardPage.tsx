@@ -8,6 +8,7 @@ import { KpiTile } from "../components/KpiTile";
 import { DailyExpensesChart } from "../components/DailyExpensesChart";
 import { CategoryBlocks } from "../components/CategoryBlocks";
 import { BudgetList } from "../components/BudgetList";
+import { RecurringList } from "../components/RecurringList";
 import { TransactionList } from "../components/TransactionList";
 import { TreeRings } from "../components/Rings";
 import { formatMoney, splitMoney } from "../lib/format";
@@ -218,7 +219,10 @@ export function DashboardPage() {
       {/* Транзакції й ліміти майже однакові заввишки, тож поруч не лишають порожнечі. */}
       <div className="grid grid-cols-1 items-start gap-5 @4xl:grid-cols-2">
         {recent}
-        {limits}
+        <div className="space-y-5">
+          {limits}
+          <RecurringList reloadKey={dataVersion} />
+        </div>
       </div>
     </div>
   );

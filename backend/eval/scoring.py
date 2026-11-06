@@ -17,6 +17,8 @@ TOOL_PATH = {
     "semantic_search_notes": "rag",
     "hybrid_search_and_sum": "hybrid",
     "check_budgets": "budgets",
+    # З'явився після прогонів оцінки, у наборі запитів його немає.
+    "find_recurring": "sql",
 }
 PATHS = ("sql", "budgets", "rag", "hybrid", "none")
 

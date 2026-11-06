@@ -16,7 +16,8 @@ from app.constants import MAX_YEAR, MIN_YEAR
 from app.database import get_db
 from app.limits import limits_for_month
 from app.models import Transaction, User
-from app.schemas import CENT, MonthlyStats, MonthStats
+from app.recurring import find_series
+from app.schemas import CENT, MonthlyStats, MonthStats, RecurringList
 from app.timeutils import (
     TZ_NAME,
     local_midnight,
@@ -254,3 +255,12 @@ async def monthly_stats(
         summaries=summaries,
         categories=[{"month": key, "amounts": category_map.get(key, {})} for key in keys],
     )
+
+
+@router.get("/recurring", response_model=RecurringList, summary="Регулярні платежі")
+async def recurring(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> RecurringList:
+    """Підписки й інші щомісячні витрати з очікуваною датою наступного списання."""
+    return RecurringList(items=[series.describe() for series in await find_series(db, user.id)])

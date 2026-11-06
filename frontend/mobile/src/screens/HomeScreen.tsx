@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { MONTH_NAMES, monthKey, quickPrompts, type MonthStats, type Transaction } from "@finance/shared";
+import { MONTH_NAMES, monthKey, quickPrompts, type MonthStats, type RecurringPayment, type Transaction } from "@finance/shared";
 import { statsApi, transactionsApi } from "@/api";
 import { useAuth } from "@/AuthContext";
 import { categoryColor, money, signedMoney } from "@/format";
@@ -36,6 +36,7 @@ export function HomeScreen() {
   const [stats, setStats] = useState<MonthStats | null>(null);
   const [recent, setRecent] = useState<Transaction[]>([]);
   const [nets, setNets] = useState<number[]>([]);
+  const [recurring, setRecurring] = useState<RecurringPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +55,11 @@ export function HomeScreen() {
       .monthly(month, RING_MONTHS)
       .then((data) => id === request.current && setNets(data.summaries.map((s) => s.net)))
       .catch(() => id === request.current && setNets([]));
+    // Регулярні платежі — теж довідка: не прийшли, то блок просто не показуємо.
+    statsApi
+      .recurring()
+      .then((items) => id === request.current && setRecurring(items))
+      .catch(() => id === request.current && setRecurring([]));
     try {
       const [monthStats, list] = await Promise.all([statsApi.month(month), transactionsApi.recent(4)]);
       if (id !== request.current) return;
@@ -301,6 +307,30 @@ export function HomeScreen() {
         </Pressable>
       ) : null}
 
+      {recurring.length > 0 && (
+        <>
+          <BlockTitle title="Регулярні платежі" />
+          <Card style={styles.recurring}>
+            {recurring.map((item, index) => (
+              <View key={`${item.name}-${item.next_date}`} style={[styles.recurringRow, index > 0 && styles.recurringLine]}>
+                <View style={[styles.recurringIcon, { backgroundColor: `${categoryColor(item.category)}1F` }]}>
+                  <Ionicons name="repeat" size={16} color={categoryColor(item.category)} />
+                </View>
+                <View style={styles.recurringText}>
+                  <Text style={styles.recurringName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.recurringNext}>
+                    наступне — {new Date(`${item.next_date}T12:00:00`).toLocaleDateString("uk-UA", { day: "numeric", month: "long" })}
+                  </Text>
+                </View>
+                <Text style={styles.recurringAmount}>{money(item.average_amount)}</Text>
+              </View>
+            ))}
+          </Card>
+        </>
+      )}
+
       <BlockTitle title="Нещодавно" action="Усі операції" onAction={() => switchTab("transactions")} />
       <Card style={styles.recent}>
         {!loading && recent.length === 0 ? (
@@ -430,4 +460,12 @@ const styles = StyleSheet.create({
   },
   setLimitsText: { flex: 1, color: theme.oliveDeep, fontSize: 14, fontWeight: "500" },
   recent: { paddingVertical: 6, paddingHorizontal: 10 },
+  recurring: { paddingVertical: 4 },
+  recurringRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
+  recurringLine: { borderTopWidth: 1, borderTopColor: theme.lineSoft },
+  recurringIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  recurringText: { flex: 1 },
+  recurringName: { color: theme.ink, fontSize: 15 },
+  recurringNext: { color: theme.muted, fontSize: 12, marginTop: 2 },
+  recurringAmount: { color: theme.ink, fontFamily: fonts.monoMedium, fontSize: 14 },
 });

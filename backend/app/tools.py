@@ -5,7 +5,8 @@
   semantic_search_notes  — чистий RAG: пошук за змістом нотатки
   hybrid_search_and_sum  — RAG знаходить записи, SQL їх підсумовує
 
-І допоміжний SQL-інструмент check_budgets — витрати проти лімітів за місяць.
+І допоміжні SQL-інструменти: check_budgets — витрати проти лімітів за
+місяць, find_recurring — регулярні платежі (підписки, гуртожиток).
 
 Гібрид винесено окремим інструментом навмисно: якби модель сама складала
 знайдені суми, результат залежав би від її арифметики. Тут вона лише обирає
@@ -15,6 +16,7 @@
 import datetime
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Literal
 
 from sqlalchemy import case, func, select
@@ -23,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.constants import CATEGORIES, DATE_RANGE_ERROR
 from app.limits import limits_for_month
 from app.models import Transaction
+from app.recurring import find_series
 from app.search import date_bounds, embed_query, semantic_search, semantic_total
 from app.timeutils import TZ, in_date_range, local_midnight, local_today, next_month, period_end, previous_period
 
@@ -404,6 +407,25 @@ async def check_budgets(db: AsyncSession, user_id: uuid.UUID, month: str | None 
     )
 
 
+async def find_recurring(db: AsyncSession, user_id: uuid.UUID) -> ToolOutcome:
+    """Регулярні платежі: серії з близькою сумою раз на місяць.
+
+    На «які в мене підписки?» SQL за категорією «підписки» не бачить
+    гуртожитку чи проїзного, а пошук за змістом не знає, що щось
+    повторюється. Серії шукає код (app/recurring.py), і суму за місяць теж
+    рахує код — модель лише переказує.
+    """
+    series = await find_series(db, user_id)
+    if not series:
+        return ToolOutcome("sql", {"recurring": [], "note": "регулярних платежів не знайдено"}, [])
+    monthly = sum(Decimal(str(s.average_amount)) for s in series)
+    return ToolOutcome(
+        "sql",
+        {"recurring": [s.describe() for s in series], "monthly_total": float(monthly)},
+        [],
+    )
+
+
 def tool_schemas() -> list[dict[str, Any]]:
     """JSON-схеми інструментів для function calling.
 
@@ -519,6 +541,17 @@ def tool_schemas() -> list[dict[str, Any]]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "find_recurring",
+                "description": (
+                    "Регулярні платежі: підписки, гуртожиток, проїзний — усе, що повторюється щомісяця "
+                    "з близькою сумою. Повертає назву, середню суму й дату наступного списання."
+                ),
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
     ]
 
 
@@ -527,6 +560,7 @@ HANDLERS = {
     "semantic_search_notes": semantic_search_notes,
     "hybrid_search_and_sum": hybrid_search_and_sum,
     "check_budgets": check_budgets,
+    "find_recurring": find_recurring,
 }
 
 
@@ -568,6 +602,8 @@ def system_prompt() -> str:
         "- Про ліміти й бюджет питай check_budgets, а не query_transactions: "
         "ліміти лежать окремо від транзакцій. Якщо він повернув порожній "
         "список, скажи, що лімітів ще не встановлено.\n"
+        "- Про підписки, регулярні й щомісячні платежі питай find_recurring: "
+        "він бачить усе, що повторюється щомісяця, а не лише категорію «підписки».\n"
         "- `sum` повертає витрати, доходи й різницю окремо. Бери те число, про "
         "яке питає користувач, і не складай їх між собою.\n"
         "- Грошові суми пиши у форматі «1 234 ₴», без копійок, якщо вони нульові.\n"

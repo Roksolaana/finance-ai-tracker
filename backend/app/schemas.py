@@ -365,6 +365,23 @@ class MonthStats(BaseModel):
     comparison_up_to_day: int | None
 
 
+class RecurringItem(BaseModel):
+    """Регулярний платіж: серія витрат із близькою сумою раз на місяць."""
+
+    name: str
+    category: str
+    average_amount: float
+    count: int
+    interval_days: int
+    last_date: datetime.date
+    # Те саме число наступного місяця після останнього списання.
+    next_date: datetime.date
+
+
+class RecurringList(BaseModel):
+    items: list[RecurringItem]
+
+
 class MonthlySummary(BaseModel):
     """Підсумок одного місяця для графіка за півроку."""
 

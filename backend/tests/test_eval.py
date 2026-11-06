@@ -60,7 +60,11 @@ def test_case_set_is_balanced_and_consistent():
     assert max(by_primary.values()) <= 3 * min(by_primary.values())
 
     schemas = {s["function"]["name"]: s["function"]["parameters"]["properties"] for s in tool_schemas()}
-    tool_for = {path: tool for tool, path in TOOL_PATH.items()}
+    # Перший інструмент шляху — основний: find_recurring теж «sql», але
+    # очікувані аргументи в наборі задано для query_transactions.
+    tool_for: dict[str, str] = {}
+    for tool, path in TOOL_PATH.items():
+        tool_for.setdefault(path, tool)
     for item in CASES:
         assert item.primary in PATHS and item.also <= set(PATHS), item.question
         if item.primary == "none":

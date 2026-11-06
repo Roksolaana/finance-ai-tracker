@@ -113,6 +113,18 @@ export interface CategoryMonthRow {
 }
 
 /** Відповідь `GET /stats/monthly` — дані для сторінки «Аналітика». */
+/** Регулярний платіж: серія витрат із близькою сумою раз на місяць. */
+export interface RecurringPayment {
+  name: string;
+  category: string;
+  average_amount: number;
+  count: number;
+  interval_days: number;
+  last_date: string;
+  /** Те саме число наступного місяця після останнього списання. */
+  next_date: string;
+}
+
 export interface MonthlyStats {
   summaries: MonthlySummary[];
   categories: CategoryMonthRow[];
