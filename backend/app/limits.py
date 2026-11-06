@@ -1,49 +1,46 @@
-"""Ліміти бюджету з урахуванням історії.
+"""Ліміти бюджету — лише з історії версій (budget_history).
 
-Ліміт, що діяв у місяці M, — остання версія з budget_history, у якої
-valid_from <= M. Одне правило для дашборду й асистента: якщо вони
-рахуватимуть ліміт по-різному, «у вересні ви вклались» на екрані
-суперечитиме відповіді в чаті.
+Ліміт, що діяв у місяці M, — остання версія з valid_from <= M; поточний
+ліміт — остання версія взагалі. Окремої таблиці «поточних» лімітів немає
+навмисно: два записи того самого факту розходяться, і тоді дашборд, діалог
+лімітів і асистент показували б різне.
 """
 
 import datetime
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import delete, func, select, union_all
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Budget, BudgetHistory
+from app.models import BudgetHistory
 
 
-async def limits_for_month(db: AsyncSession, user_id: uuid.UUID, month: datetime.date) -> dict[str, Decimal]:
-    """Ліміти, що діяли в місяці `month`, за категорією (впорядковано за назвою)."""
-    month = month.replace(day=1)
+async def limits_for_month(
+    db: AsyncSession, user_id: uuid.UUID, month: datetime.date | None = None
+) -> dict[str, Decimal]:
+    """Ліміти за категорією, що діяли в місяці `month`; без нього — поточні.
+
+    Знятий ліміт (остання версія з NULL) до результату не потрапляє.
+    """
+    conditions = [BudgetHistory.user_id == user_id]
+    if month is not None:
+        conditions.append(BudgetHistory.valid_from <= month.replace(day=1))
     latest = (
         select(BudgetHistory.category, BudgetHistory.monthly_limit)
-        .where(BudgetHistory.user_id == user_id, BudgetHistory.valid_from <= month)
+        .where(*conditions)
         .distinct(BudgetHistory.category)
         .order_by(BudgetHistory.category, BudgetHistory.valid_from.desc())
         .subquery()
     )
-    # Ліміт, у якого взагалі немає історії, діє на кожен місяць — як до
-    # появи budget_history. Міграція 0006 переносить усі наявні ліміти, тож
-    # через API такий рядок не виникає; це запас для записів, внесених
-    # напряму в budgets.
-    tracked = select(BudgetHistory.category).where(BudgetHistory.user_id == user_id)
-    untracked = select(Budget.category, Budget.monthly_limit).where(
-        Budget.user_id == user_id, Budget.category.not_in(tracked)
-    )
-    effective = union_all(
-        select(latest.c.category, latest.c.monthly_limit).where(latest.c.monthly_limit.is_not(None)),
-        untracked,
-    ).subquery()
-    # Сортує база, як і раніше: порядок кирилиці в Python (за кодами
-    # символів) відрізняється від колації, і ліміти на екрані перемішались би.
+    # Сортує база: порядок кирилиці в Python (за кодами символів)
+    # відрізняється від колації, і ліміти на екрані перемішались би.
     rows = (
         await db.execute(
-            select(effective.c.category, effective.c.monthly_limit).order_by(effective.c.category)
+            select(latest.c.category, latest.c.monthly_limit)
+            .where(latest.c.monthly_limit.is_not(None))
+            .order_by(latest.c.category)
         )
     ).all()
     return {category: Decimal(limit) for category, limit in rows}

@@ -13,7 +13,7 @@ from sqlalchemy import func, select, text
 from app.database import settings
 from app.main import app
 from app.migrate import alembic_config
-from app.models import Budget, BudgetHistory, ChatMessage, Transaction
+from app.models import BudgetHistory, ChatMessage, Transaction
 from app.ratelimit import RateLimiter
 
 # --- власник транзакції ---
@@ -198,7 +198,7 @@ async def test_delete_account_removes_all_data(client, db, alice, bob):
         db.add_all(
             [
                 Transaction(user_id=who, amount=-100, category="їжа", note="Обід"),
-                Budget(user_id=who, category="їжа", monthly_limit=1000),
+                BudgetHistory(user_id=who, category="їжа", valid_from=datetime.date(2026, 10, 1), monthly_limit=1000),
                 ChatMessage(user_id=who, role="user", content="Привіт"),
             ]
         )
@@ -214,8 +214,44 @@ async def test_delete_account_removes_all_data(client, db, alice, bob):
 
     assert (await client.get(ME, headers=headers)).status_code == 401
     assert (await login(client, password="password123")).status_code == 401
-    for model in (Transaction, Budget, BudgetHistory, ChatMessage):
+    for model in (Transaction, BudgetHistory, ChatMessage):
         left = (await db.execute(select(func.count()).select_from(model).where(model.user_id == owner))).scalar_one()
         assert left == 0, model.__tablename__
     # Чужі дані на місці.
     assert (await client.get("/api/v1/transactions/", headers=bob_headers)).json()["total"] == 1
+
+
+async def test_delete_account_removes_chat_and_limit_history(client, db, alice, bob):
+    """Розмова й історія лімітів — теж дані акаунта; чужі лишаються."""
+    headers, user_id = alice
+    bob_headers, bob_id = bob
+    for who, who_headers in ((user_id, headers), (bob_id, bob_headers)):
+        db.add(ChatMessage(user_id=uuid.UUID(who), role="user", content="Скільки на каву?"))
+        await client.put("/api/v1/budgets/", json=[{"category": "кафе", "monthly_limit": 500}], headers=who_headers)
+    await db.commit()
+
+    response = await client.request("DELETE", ME, json={"password": "password123"}, headers=headers)
+    assert response.status_code == 204
+
+    async def count(model, owner):
+        query = select(func.count()).select_from(model).where(model.user_id == uuid.UUID(owner))
+        return (await db.execute(query)).scalar_one()
+
+    assert await count(ChatMessage, user_id) == 0
+    assert await count(BudgetHistory, user_id) == 0
+    assert await count(ChatMessage, bob_id) == 1
+    assert await count(BudgetHistory, bob_id) == 1
+
+
+async def test_token_issued_before_logout_all_gets_401(client, alice):
+    headers, _ = alice
+    before = (await login(client, password="password123")).json()["access_token"]
+    assert (await client.get(ME, headers={"Authorization": f"Bearer {before}"})).status_code == 200
+
+    assert (await client.post("/api/v1/auth/logout-all", headers=headers)).status_code == 204
+
+    revoked = await client.get(ME, headers={"Authorization": f"Bearer {before}"})
+    assert revoked.status_code == 401
+    # Новий вхід після відкликання дає робочий токен.
+    after = (await login(client, password="password123")).json()["access_token"]
+    assert (await client.get(ME, headers={"Authorization": f"Bearer {after}"})).status_code == 200

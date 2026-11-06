@@ -11,7 +11,7 @@ from sqlalchemy import text
 from app import main
 from app.database import settings
 from app.migrate import DatabaseUnavailable, upgrade_to_head
-from app.models import Base, Budget, Transaction
+from app.models import Base, BudgetHistory, Transaction
 from app.tools import ToolArgumentError, check_budgets, hybrid_search_and_sum
 
 OCTOBER = datetime.datetime(2026, 10, 10, 12, tzinfo=datetime.timezone.utc)
@@ -53,8 +53,8 @@ async def test_check_budgets_finds_overspent_category(db, alice, bob):
     september = datetime.datetime(2026, 9, 10, 12, tzinfo=datetime.timezone.utc)
     db.add_all(
         [
-            Budget(user_id=owner, category="кафе", monthly_limit=3000),
-            Budget(user_id=owner, category="їжа", monthly_limit=10000),
+            BudgetHistory(user_id=owner, category="кафе", valid_from=datetime.date(2026, 10, 1), monthly_limit=3000),
+            BudgetHistory(user_id=owner, category="їжа", valid_from=datetime.date(2026, 10, 1), monthly_limit=10000),
             Transaction(user_id=owner, amount=-3280, category="кафе", spent_at=OCTOBER),
             Transaction(user_id=owner, amount=-8740, category="їжа", spent_at=OCTOBER),
             # Не мають потрапити в жовтень: інший місяць, дохід і чужий акаунт.

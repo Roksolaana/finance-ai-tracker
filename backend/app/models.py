@@ -1,4 +1,4 @@
-"""ORM-моделі — таблиці transactions (з підтримкою pgvector), budgets і chat_messages."""
+"""ORM-моделі — таблиці users, transactions (з підтримкою pgvector), budget_history і chat_messages."""
 
 import datetime
 import uuid
@@ -144,49 +144,13 @@ class Transaction(Base):
         )
 
 
-class Budget(Base):
-    """Поточний місячний ліміт витрат для категорії.
-
-    Один рядок = одна категорія, тому category є первинним ключем. Це те,
-    що бачить і редагує інтерфейс. Який ліміт діяв у минулому місяці,
-    відповідає BudgetHistory, а не ця таблиця (див. app/limits.py).
-    """
-
-    __tablename__ = "budgets"
-
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        primary_key=True,
-        comment="Власник ліміту",
-    )
-    category: Mapped[str] = mapped_column(
-        String(100),
-        primary_key=True,
-        comment="Витратна категорія, на яку встановлено ліміт",
-    )
-    monthly_limit: Mapped[float] = mapped_column(
-        Numeric(12, 2),
-        nullable=False,
-        comment="Ліміт витрат на місяць",
-    )
-    updated_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        comment="Коли ліміт останній раз змінювали",
-    )
-
-    def __repr__(self) -> str:
-        return f"<Budget(category={self.category!r}, monthly_limit={self.monthly_limit})>"
-
-
 class BudgetHistory(Base):
     """Версія ліміту категорії, що діє з певного місяця.
 
-    Без історії зміна ліміту в жовтні переписувала і вересень: «чи вклалась
-    я у вересні» відповідалось за новим лімітом. Для місяця M діє остання
-    версія з valid_from <= M; NULL у monthly_limit — ліміт знято.
+    Єдине місце, де лежать ліміти. Без історії зміна ліміту в жовтні
+    переписувала і вересень: «чи вклалась я у вересні» відповідалось за новим
+    лімітом. Для місяця M діє остання версія з valid_from <= M, поточний
+    ліміт — остання версія взагалі; NULL у monthly_limit — ліміт знято.
     """
 
     __tablename__ = "budget_history"

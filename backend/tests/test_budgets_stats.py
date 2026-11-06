@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.models import Budget, Transaction
+from app.models import BudgetHistory, Transaction
 
 URL = "/api/v1/budgets/"
 
@@ -76,7 +76,7 @@ async def test_stats_survive_unknown_category(client, db, alice):
             Transaction(user_id=owner, amount=-50, category="щось нове", spent_at=when, note="Невідомо що"),
             Transaction(user_id=owner, amount=-150, category="їжа", spent_at=when),
             # Ліміт на категорію, якої вже немає в списку, — теж не має ламати.
-            Budget(user_id=owner, category="щось нове", monthly_limit=100),
+            BudgetHistory(user_id=owner, category="щось нове", valid_from=datetime.date(2026, 10, 1), monthly_limit=100),
         ]
     )
     await db.commit()

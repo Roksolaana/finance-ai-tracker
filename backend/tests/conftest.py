@@ -97,7 +97,7 @@ async def clean_tables(sessionmaker):
     """Кожен тест починає з порожніх таблиць."""
     yield
     async with sessionmaker() as session:
-        await session.execute(text("TRUNCATE users, transactions, budgets, chat_messages CASCADE"))
+        await session.execute(text("TRUNCATE users, transactions, budget_history, chat_messages CASCADE"))
         await session.commit()
 
 

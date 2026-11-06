@@ -5,7 +5,7 @@ import uuid
 
 from alembic import command
 from conftest import run_sql
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.migrate import alembic_config
 from app.models import BudgetHistory
@@ -135,6 +135,58 @@ def test_migration_moves_existing_limits_into_history(test_database):
             ("кафе", 1000, D(2026, 9, 1)),
             ("їжа", 5000, D(2026, 10, 1)),
         ]
+    finally:
+        command.upgrade(config, "head")
+        run_sql("DELETE FROM users WHERE email = 'migrate@example.com'")
+
+
+async def test_history_is_the_only_source_of_limits(client, db, alice):
+    """Поточний ліміт — останній запис історії; окремої таблиці budgets немає."""
+    headers, user_id = alice
+    owner = uuid.UUID(user_id)
+    db.add_all(
+        [
+            BudgetHistory(user_id=owner, category="кафе", valid_from=D(2026, 9, 1), monthly_limit=700),
+            BudgetHistory(user_id=owner, category="кафе", valid_from=D(2026, 10, 1), monthly_limit=900),
+            # Знятий ліміт у переліку поточних не показується.
+            BudgetHistory(user_id=owner, category="їжа", valid_from=D(2026, 9, 1), monthly_limit=5000),
+            BudgetHistory(user_id=owner, category="їжа", valid_from=D(2026, 10, 1), monthly_limit=None),
+        ]
+    )
+    await db.commit()
+
+    assert (await client.get(URL, headers=headers)).json() == [{"category": "кафе", "monthly_limit": 900}]
+    assert (await db.execute(text("SELECT to_regclass('public.budgets')"))).scalar_one() is None
+
+
+def test_migration_moves_limits_without_history_before_dropping_budgets(test_database):
+    """Рядок budgets без жодної версії в історії не губиться при видаленні таблиці."""
+    config = alembic_config()
+    command.downgrade(config, "0008")
+    try:
+        user_id = uuid.uuid4()
+        run_sql(
+            f"INSERT INTO users (id, email, password_hash, display_name) "
+            f"VALUES ('{user_id}', 'migrate@example.com', 'x', 'm')",
+            f"INSERT INTO budgets (user_id, category, monthly_limit, updated_at) "
+            f"VALUES ('{user_id}', 'кафе', 1000, '2026-09-20 12:00+00')",
+            # Цей уже має історію — його версії міграція не чіпає.
+            f"INSERT INTO budgets (user_id, category, monthly_limit, updated_at) "
+            f"VALUES ('{user_id}', 'їжа', 6000, '2026-10-05 12:00+00')",
+            f"INSERT INTO budget_history (user_id, category, valid_from, monthly_limit) "
+            f"VALUES ('{user_id}', 'їжа', '2026-08-01', 5000), ('{user_id}', 'їжа', '2026-10-01', 6000)",
+        )
+        command.upgrade(config, "0009")
+        rows = run_sql(
+            f"SELECT category, valid_from, monthly_limit FROM budget_history "
+            f"WHERE user_id = '{user_id}'"
+        )
+        assert {(r["category"], r["valid_from"], float(r["monthly_limit"])) for r in rows} == {
+            ("кафе", D(2026, 9, 1), 1000),
+            ("їжа", D(2026, 8, 1), 5000),
+            ("їжа", D(2026, 10, 1), 6000),
+        }
+        assert run_sql("SELECT to_regclass('public.budgets') AS t")[0]["t"] is None
     finally:
         command.upgrade(config, "head")
         run_sql("DELETE FROM users WHERE email = 'migrate@example.com'")
