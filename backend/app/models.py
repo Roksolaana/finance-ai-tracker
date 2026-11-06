@@ -4,7 +4,7 @@ import datetime
 import uuid
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text, func
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -136,11 +136,11 @@ class Transaction(Base):
 
 
 class Budget(Base):
-    """Місячний ліміт витрат для категорії.
+    """Поточний місячний ліміт витрат для категорії.
 
-    Один рядок = одна категорія, тому category є первинним ключем.
-    Ліміт не привʼязаний до конкретного місяця: він діє на кожен місяць,
-    поки користувач його не змінить.
+    Один рядок = одна категорія, тому category є первинним ключем. Це те,
+    що бачить і редагує інтерфейс. Який ліміт діяв у минулому місяці,
+    відповідає BudgetHistory, а не ця таблиця (див. app/limits.py).
     """
 
     __tablename__ = "budgets"
@@ -170,6 +170,51 @@ class Budget(Base):
 
     def __repr__(self) -> str:
         return f"<Budget(category={self.category!r}, monthly_limit={self.monthly_limit})>"
+
+
+class BudgetHistory(Base):
+    """Версія ліміту категорії, що діє з певного місяця.
+
+    Без історії зміна ліміту в жовтні переписувала і вересень: «чи вклалась
+    я у вересні» відповідалось за новим лімітом. Для місяця M діє остання
+    версія з valid_from <= M; NULL у monthly_limit — ліміт знято.
+    """
+
+    __tablename__ = "budget_history"
+    __table_args__ = (
+        CheckConstraint("extract(day from valid_from) = 1", name="budget_history_valid_from_first_day"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        comment="Власник ліміту",
+    )
+    category: Mapped[str] = mapped_column(
+        String(100),
+        primary_key=True,
+        comment="Витратна категорія, на яку встановлено ліміт",
+    )
+    valid_from: Mapped[datetime.date] = mapped_column(
+        Date,
+        primary_key=True,
+        comment="Перше число місяця, з якого діє ця версія ліміту",
+    )
+    monthly_limit: Mapped[float | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+        comment="Ліміт витрат на місяць; NULL — з цього місяця ліміт знято",
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="Коли версію записано або востаннє змінено",
+    )
+
+    def __repr__(self) -> str:
+        return f"<BudgetHistory(category={self.category!r}, valid_from={self.valid_from}, limit={self.monthly_limit})>"
 
 
 class ChatMessage(Base):

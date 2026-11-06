@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_current_user
 from app.constants import MAX_YEAR, MIN_YEAR
 from app.database import get_db
-from app.models import Budget, Transaction, User
+from app.limits import limits_for_month
+from app.models import Transaction, User
 from app.schemas import CENT, MonthlyStats, MonthStats
 from app.timeutils import (
     TZ_NAME,
@@ -154,7 +155,9 @@ async def month_stats(
     ).all()
     weekday_map = {int(row[0]): Decimal(row[1]) for row in by_weekday}
 
-    budget_rows = (await db.execute(select(Budget).where(Budget.user_id == user.id).order_by(Budget.category))).scalars().all()
+    # Ліміти того місяця, який дивляться, а не поточні: інакше після
+    # підняття ліміту минулий місяць заднім числом ставав «у межах».
+    limits = await limits_for_month(db, user.id, first_day)
     all_time_balance = Decimal(
         (await db.execute(select(func.coalesce(func.sum(Transaction.amount), 0)).where(Transaction.user_id == user.id))).scalar_one()
     )
@@ -188,11 +191,11 @@ async def month_stats(
         ],
         budgets=[
             {
-                "category": budget.category,
-                "limit": _money(budget.monthly_limit),
-                "spent": _money(spent_by_category.get(budget.category, ZERO)),
+                "category": category,
+                "limit": _money(limit),
+                "spent": _money(spent_by_category.get(category, ZERO)),
             }
-            for budget in budget_rows
+            for category, limit in limits.items()
         ],
         weekday=[{"weekday": dow, "amount": _money(weekday_map.get(dow, ZERO))} for dow in range(1, 8)],
         comparison={

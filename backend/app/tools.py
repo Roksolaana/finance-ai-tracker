@@ -21,7 +21,8 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import CATEGORIES, DATE_RANGE_ERROR
-from app.models import Budget, Transaction
+from app.limits import limits_for_month
+from app.models import Transaction
 from app.search import date_bounds, embed_query, semantic_search, semantic_total
 from app.timeutils import TZ, in_date_range, local_midnight, local_today, next_month, period_end, previous_period
 
@@ -351,9 +352,9 @@ async def check_budgets(db: AsyncSession, user_id: uuid.UUID, month: str | None 
     start = local_midnight(first_day)
     end = local_midnight(datetime.date(*next_month(first_day.year, first_day.month), 1))
 
-    budgets = (
-        await db.execute(select(Budget).where(Budget.user_id == user_id).order_by(Budget.category))
-    ).scalars().all()
+    # Ліміти, що діяли саме в тому місяці: після зміни ліміту в жовтні
+    # «чи вклалась я у вересні» має звірятись із вересневим.
+    budgets = await limits_for_month(db, user_id, first_day)
     month_key = first_day.strftime("%Y-%m")
     if not budgets:
         return ToolOutcome("sql", {"month": month_key, "budgets": [], "note": "лімітів не встановлено"}, [])
@@ -367,7 +368,7 @@ async def check_budgets(db: AsyncSession, user_id: uuid.UUID, month: str | None 
                     Transaction.amount < 0,
                     Transaction.spent_at >= start,
                     Transaction.spent_at < end,
-                    Transaction.category.in_([b.category for b in budgets]),
+                    Transaction.category.in_(list(budgets)),
                 )
                 .group_by(Transaction.category)
             )
@@ -375,12 +376,12 @@ async def check_budgets(db: AsyncSession, user_id: uuid.UUID, month: str | None 
     )
 
     rows = []
-    for budget in budgets:
-        limit = float(budget.monthly_limit)
-        used = float(spent.get(budget.category, 0))
+    for category, monthly_limit in budgets.items():
+        limit = float(monthly_limit)
+        used = float(spent.get(category, 0))
         rows.append(
             {
-                "category": budget.category,
+                "category": category,
                 "limit": limit,
                 "spent": used,
                 "left": max(limit - used, 0.0),

@@ -6,8 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
 from app.database import get_db
+from app.limits import record_limit
 from app.models import Budget, User
 from app.schemas import BudgetItem, BudgetRead
+from app.timeutils import local_today
 
 router = APIRouter(prefix="/budgets", tags=["budgets"])
 
@@ -49,6 +51,20 @@ async def replace_budgets(
             detail=f"Категорія повторюється: {', '.join(sorted(duplicates))}",
         )
 
+    # Нова версія діє з поточного місяця; минулі рахуються за тими лімітами,
+    # що діяли тоді. Діалог надсилає весь набір, тож пишемо лише те, що
+    # справді змінилось.
+    month = local_today().replace(day=1)
+    current = dict(
+        (await db.execute(select(Budget.category, Budget.monthly_limit).where(Budget.user_id == user.id))).all()
+    )
+    wanted = {item.category: item.monthly_limit for item in payload}
+    for category in sorted(current.keys() - wanted.keys()):
+        await record_limit(db, user.id, category, None, month)
+    for category, limit in wanted.items():
+        if current.get(category) != limit:
+            await record_limit(db, user.id, category, limit, month)
+
     await db.execute(delete(Budget).where(Budget.user_id == user.id))
     db.add_all([Budget(user_id=user.id, category=item.category, monthly_limit=item.monthly_limit) for item in payload])
     await db.commit()
@@ -75,5 +91,7 @@ async def delete_budget(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Ліміт для категорії «{category}» не знайдено",
         )
+    # Знятий ліміт лишається в минулих місяцях: з цього місяця його просто немає.
+    await record_limit(db, user.id, category, None, local_today())
     await db.delete(budget)
     await db.commit()
